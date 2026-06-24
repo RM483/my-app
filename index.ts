@@ -4,7 +4,6 @@ import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
 
-// DB 接続の準備
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter, log: ["query"] });
@@ -12,27 +11,37 @@ const prisma = new PrismaClient({ adapter, log: ["query"] });
 const app = express();
 const PORT = process.env.PORT || 8888;
 
-// 画面を作るための設定じゃ
 app.set("view engine", "ejs");
 app.set("views", "./views");
-// フォームから送られてきたデータを受け取れるようにする設定
 app.use(express.urlencoded({ extended: true }));
 
-// トップページ：ユーザー一覧を表示する
+// 一覧表示：DBから年齢も含めて取得する
 app.get("/", async (req, res) => {
-  const users = await prisma.user.findMany();
+  const users = await prisma.user.findMany({
+    orderBy: { id: "asc" }, // ID順に並べると見やすいぞ
+  });
   res.render("index", { users });
 });
 
-// ユーザー追加：フォームから送られた名前を保存する
+// 追加処理：フォームから名前と年齢を受け取る
 app.post("/users", async (req, res) => {
   const name = req.body.name;
+  // 年齢は文字列で届くので、Number() で数字に変換するのじゃ
+  const age = req.body.age ? Number(req.body.age) : null;
+
   if (name) {
-    await prisma.user.create({ data: { name } });
+    try {
+      await prisma.user.create({
+        data: { name, age },
+      });
+      console.log(`${name}さん（${age}歳）を追加したぞ！`);
+    } catch (error) {
+      console.error("保存に失敗したぞよ:", error);
+    }
   }
-  res.redirect("/"); // 保存したらトップページに戻るぞ
+  res.redirect("/");
 });
 
 app.listen(PORT, () => {
-  console.log(`サーバーが動き出したぞ！ http://localhost:${PORT}`);
+  console.log(`サーバーが動いておるぞ！ http://localhost:${PORT}`);
 });
