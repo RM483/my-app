@@ -15,5 +15,6 @@ model Todo {
   id          Int      @id @default(autoincrement()) // 自動で1ずつ増える識別番号
   title       String                                 // タスクの名前（タイトル）
   isCompleted Boolean  @default(false)               // 完了フラグ（初期値は未完了のfalse）
+  dueDate     DateTime?                              // 期日（締め切り日）を保存する項目。7/1追加。
   createdAt   DateTime @default(now())               // タスクが作られた日時（自動記録）
 }

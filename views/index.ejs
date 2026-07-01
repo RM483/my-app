@@ -14,11 +14,21 @@
           <% if (todo.isCompleted) { %>
             <span style="color: gray; text-decoration: line-through; margin-right: 10px;">
               <strong><%= todo.title %></strong> (完了)
+              <% if (todo.dueDate) { %>
+                <span style="font-size: 0.9em; color: darkgray; margin-left: 10px;">
+                  ⏰ 期日: <%= new Date(todo.dueDate).toLocaleDateString("ja-JP") %>
+                </span>
+              <% } %>
             </span>
             <button type="submit">未完了に戻す</button>
           <% } else { %>
             <span style="margin-right: 10px;">
               <strong><%= todo.title %></strong> <span style="color: red;">(未完了)</span>
+              <% if (todo.dueDate) { %>
+                <span style="font-size: 0.9em; color: #555; margin-left: 10px;">
+                  ⏰ 期日: <%= new Date(todo.dueDate).toLocaleDateString("ja-JP") %>
+                </span>
+              <% } %>
             </span>
             <button type="submit">完了する</button>
           <% } %>
@@ -35,6 +45,11 @@
   <h2>タスクを追加する</h2>
   <form action="/todos" method="POST">
     <input type="text" name="title" placeholder="新しいタスクを入力してください" required>
+    
+    <label style="margin-left: 10px; margin-right: 10px;">
+      期日: <input type="date" name="dueDate">
+    </label>
+
     <button type="submit">追加</button>
   </form>
 

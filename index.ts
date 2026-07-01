@@ -28,15 +28,27 @@ app.get("/", async (req, res) => {
   }
 });
 
-// タスクの追加処理（Create）
+// 【変更】タスクの追加処理（Create）：期日も一緒に保存できるように拡張
 app.post("/todos", async (req, res) => {
   try {
-    const { title } = req.body;
+    const { title, dueDate } = req.body; // 画面から title と dueDate を受け取る
+
     if (!title || title.trim() === "") {
       return res.redirect("/");
     }
+
+    // データベースに保存する用のデータ型を作る
+    let parsedDueDate: Date | null = null;
+    if (dueDate && dueDate.trim() !== "") {
+      // 画面から日付が送られてきたら、文字列から「日付オブジェクト（Date）」に変換する
+      parsedDueDate = new Date(dueDate);
+    }
+
     await prisma.todo.create({
-      data: { title: title },
+      data: {
+        title: title,
+        dueDate: parsedDueDate, // 【追加】変換した期日を保存する（入力がなければ null）
+      },
     });
     res.redirect("/");
   } catch (error) {
@@ -68,18 +80,13 @@ app.post("/todos/:id/toggle", async (req, res) => {
   }
 });
 
-// 【変更】タスクの削除処理（Delete）
+// タスクの削除処理（Delete）
 app.post("/todos/:id/delete", async (req, res) => {
   try {
-    // URLから削除したいタスクのIDを取得して数値に変換
     const todoId = Number(req.params.id);
-
-    // Prismaを使って、データベースからそのIDのタスクを削除
     await prisma.todo.delete({
       where: { id: todoId },
     });
-
-    // 削除が終わったらトップ画面に戻す（再読み込み）
     res.redirect("/");
   } catch (error) {
     console.error("タスクの削除に失敗したぞよ:", error);
