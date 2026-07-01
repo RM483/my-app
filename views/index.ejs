@@ -8,13 +8,20 @@
   <h1>タスク一覧</h1>
   <ul>
     <% todos.forEach(todo => { %>
-      <li>
-        <strong><%= todo.title %></strong>
-        <% if (todo.isCompleted) { %>
-          <span style="color: gray; text-decoration: line-through;">(完了)</span>
-        <% } else { %>
-          <span style="color: red;">(未完了)</span>
-        <% } %>
+      <li style="margin-bottom: 10px;">
+        <form action="/todos/<%= todo.id %>/toggle" method="POST" style="display: inline;">
+          <% if (todo.isCompleted) { %>
+            <span style="color: gray; text-decoration: line-through; margin-right: 10px;">
+              <strong><%= todo.title %></strong> (完了)
+            </span>
+            <button type="submit">未完了に戻す</button>
+          <% } else { %>
+            <span style="margin-right: 10px;">
+              <strong><%= todo.title %></strong> <span style="color: red;">(未完了)</span>
+            </span>
+            <button type="submit">完了する</button>
+          <% } %>
+        </form>
       </li>
     <% }) %>
   </ul>

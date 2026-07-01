@@ -28,26 +28,16 @@ app.get("/", async (req, res) => {
   }
 });
 
-// 【変更】タスクの追加処理（Create）
+// タスクの追加処理（Create）
 app.post("/todos", async (req, res) => {
   try {
-    // 画面の入力フォーム（name="title"）から送信された文字を取得
     const { title } = req.body;
-
-    // もし入力が空っぽなら、何もせずトップ画面に戻す（安全対策）
     if (!title || title.trim() === "") {
       return res.redirect("/");
     }
-
-    // Prismaを使って、データベースのTodoテーブルに新しいレコードを挿入（保存）
     await prisma.todo.create({
-      data: {
-        title: title, // 入力されたタスク名
-        // isCompleted は初期値(false)が自動で入るため、ここでは省略してOKです
-      },
+      data: { title: title },
     });
-
-    // 保存が終わったら、新しくなったリストを表示するためにトップ画面にリダイレクト（再読み込み）
     res.redirect("/");
   } catch (error) {
     console.error("タスクの追加に失敗したぞよ:", error);
@@ -55,9 +45,35 @@ app.post("/todos", async (req, res) => {
   }
 });
 
-// 古いユーザー追加用ルートは、もう使わないので削除または無効化
-app.post("/users", (req, res) => {
-  res.redirect("/");
+// 【変更】タスクの状態更新処理（Update）
+app.post("/todos/:id/toggle", async (req, res) => {
+  try {
+    // URLからタスクのIDを取得し、数値（number）に変換する
+    const todoId = Number(req.params.id);
+
+    // 1. まず、現在のタスクの状態をデータベースから1件取得して調べる
+    const currentTodo = await prisma.todo.findUnique({
+      where: { id: todoId },
+    });
+
+    if (!currentTodo) {
+      return res.status(404).send("タスクが見つかりません");
+    }
+
+    // 2. Prismaを使って、isCompleted の真偽値（true / false）を反転させて更新する
+    await prisma.todo.update({
+      where: { id: todoId },
+      data: {
+        isCompleted: !currentTodo.isCompleted, // trueならfalseに、falseならtrueにする
+      },
+    });
+
+    // 更新が終わったらトップ画面に戻す
+    res.redirect("/");
+  } catch (error) {
+    console.error("タスクの更新に失敗したぞよ:", error);
+    res.status(500).send("エラーが発生しました");
+  }
 });
 
 app.listen(PORT, () => {
