@@ -1,8 +1,6 @@
 // This is your Prisma schema file,
 // learn more about it in the docs: https://pris.ly/d/prisma-schema
 
-// Get a free hosted Postgres database in seconds: `npx create-db`
-
 generator client {
   provider = "prisma-client"
   output   = "../generated/prisma"
@@ -12,8 +10,10 @@ datasource db {
   provider = "postgresql"
 }
 
-model User {
-  id   Int    @id @default(autoincrement())
-  name String
-  age Int?
+// 【新設】タスクを管理するためのデータモデル
+model Todo {
+  id          Int      @id @default(autoincrement()) // 自動で1ずつ増える識別番号
+  title       String                                 // タスクの名前（タイトル）
+  isCompleted Boolean  @default(false)               // 完了フラグ（初期値は未完了のfalse）
+  createdAt   DateTime @default(now())               // タスクが作られた日時（自動記録）
 }
