@@ -10,7 +10,6 @@
     <% todos.forEach(todo => { %>
       <li>
         <strong><%= todo.title %></strong>
-        
         <% if (todo.isCompleted) { %>
           <span style="color: gray; text-decoration: line-through;">(完了)</span>
         <% } else { %>
@@ -20,9 +19,12 @@
     <% }) %>
   </ul>
 
-  <h2>タスクを追加する（次のステップで実装）</h2>
-  <p>現在はまだ追加できません。次のステップをお楽しみに！</p>
+  <h2>タスクを追加する</h2>
+  <form action="/todos" method="POST">
+    <input type="text" name="title" placeholder="新しいタスクを入力してください" required>
+    <button type="submit">追加</button>
+  </form>
 
-  <p><a href="/">最新の状態に更新</a></p>
+  <p style="margin-top: 20px;"><a href="/">最新の状態に更新</a></p>
 </body>
 </html>
