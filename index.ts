@@ -4,6 +4,7 @@ import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
 
+// 【解説】データベースとの接続設定（Prisma 7の推奨構成）
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter, log: ["query"] });
@@ -15,30 +16,24 @@ app.set("view engine", "ejs");
 app.set("views", "./views");
 app.use(express.urlencoded({ extended: true }));
 
-// 一覧表示：DBから年齢も含めて取得する
+// 【変更】一覧表示：DBからTodo（タスク）を全件取得して画面に渡す
 app.get("/", async (req, res) => {
-  const users = await prisma.user.findMany({
-    orderBy: { id: "asc" }, // ID順に並べると見やすいぞ
-  });
-  res.render("index", { users });
+  try {
+    // Prismaを使って、TodoテーブルからデータをIDが昇順（古い順）になるように取得
+    const todos = await prisma.todo.findMany({
+      orderBy: { id: "asc" },
+    });
+    // index.ejs をレンダリング（表示）。その際、取得したtodosデータを画面に渡す
+    res.render("index", { todos });
+  } catch (error) {
+    console.error("データ取得に失敗したぞよ:", error);
+    res.status(500).send("エラーが発生しました");
+  }
 });
 
-// 追加処理：フォームから名前と年齢を受け取る
+// 【一時変更】古いユーザー追加処理は一旦無効化（次のステップでタスク追加に書き換えます）
 app.post("/users", async (req, res) => {
-  const name = req.body.name;
-  // 年齢は文字列で届くので、Number() で数字に変換するのじゃ
-  const age = req.body.age ? Number(req.body.age) : null;
-
-  if (name) {
-    try {
-      await prisma.user.create({
-        data: { name, age },
-      });
-      console.log(`${name}さん（${age}歳）を追加したぞ！`);
-    } catch (error) {
-      console.error("保存に失敗したぞよ:", error);
-    }
-  }
+  console.log("ユーザー追加は現在無効化されています");
   res.redirect("/");
 });
 

@@ -2,35 +2,27 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>ユーザー一覧（年齢対応版）</title>
+  <title>シンプルタスク管理アプリ</title>
 </head>
 <body>
-  <h1>ユーザー一覧</h1>
+  <h1>タスク一覧</h1>
   <ul>
-    <% users.forEach(user => { %>
-      <!-- 名前だけでなく、年齢があれば表示、なければ「未設定」と出すぞ -->
+    <% todos.forEach(todo => { %>
       <li>
-        <%= user.name %> 
-        (<%= user.age !== null ? user.age + '歳' : '年齢未設定' %>)
+        <strong><%= todo.title %></strong>
+        
+        <% if (todo.isCompleted) { %>
+          <span style="color: gray; text-decoration: line-through;">(完了)</span>
+        <% } else { %>
+          <span style="color: red;">(未完了)</span>
+        <% } %>
       </li>
     <% }) %>
   </ul>
 
-  <h2>ユーザーを追加する</h2>
-  <form action="/users" method="post">
-    <div>
-      <label>名前：</label>
-      <input type="text" name="name" placeholder="名前を入力" required>
-    </div>
-    <div style="margin-top: 10px;">
-      <label>年齢：</label>
-      <!-- 年齢を入れるための数字専用の入力欄じゃ -->
-      <input type="number" name="age" placeholder="年齢を入力">
-    </div>
-    <button type="submit" style="margin-top: 10px;">追加する</button>
-  </form>
+  <h2>タスクを追加する（次のステップで実装）</h2>
+  <p>現在はまだ追加できません。次のステップをお楽しみに！</p>
 
   <p><a href="/">最新の状態に更新</a></p>
 </body>
 </html>
-
