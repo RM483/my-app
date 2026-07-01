@@ -8,7 +8,8 @@
   <h1>タスク一覧</h1>
   <ul>
     <% todos.forEach(todo => { %>
-      <li style="margin-bottom: 10px;">
+      <li style="margin-bottom: 10px; display: flex; align-items: center;">
+        
         <form action="/todos/<%= todo.id %>/toggle" method="POST" style="display: inline;">
           <% if (todo.isCompleted) { %>
             <span style="color: gray; text-decoration: line-through; margin-right: 10px;">
@@ -22,6 +23,11 @@
             <button type="submit">完了する</button>
           <% } %>
         </form>
+
+        <form action="/todos/<%= todo.id %>/delete" method="POST" style="display: inline; margin-left: 10px;">
+          <button type="submit" style="color: white; background-color: red; border: none; padding: 3px 8px; cursor: pointer;">削除</button>
+        </form>
+
       </li>
     <% }) %>
   </ul>

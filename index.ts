@@ -45,13 +45,10 @@ app.post("/todos", async (req, res) => {
   }
 });
 
-// 【変更】タスクの状態更新処理（Update）
+// タスクの状態更新処理（Update）
 app.post("/todos/:id/toggle", async (req, res) => {
   try {
-    // URLからタスクのIDを取得し、数値（number）に変換する
     const todoId = Number(req.params.id);
-
-    // 1. まず、現在のタスクの状態をデータベースから1件取得して調べる
     const currentTodo = await prisma.todo.findUnique({
       where: { id: todoId },
     });
@@ -60,18 +57,32 @@ app.post("/todos/:id/toggle", async (req, res) => {
       return res.status(404).send("タスクが見つかりません");
     }
 
-    // 2. Prismaを使って、isCompleted の真偽値（true / false）を反転させて更新する
     await prisma.todo.update({
       where: { id: todoId },
-      data: {
-        isCompleted: !currentTodo.isCompleted, // trueならfalseに、falseならtrueにする
-      },
+      data: { isCompleted: !currentTodo.isCompleted },
     });
-
-    // 更新が終わったらトップ画面に戻す
     res.redirect("/");
   } catch (error) {
     console.error("タスクの更新に失敗したぞよ:", error);
+    res.status(500).send("エラーが発生しました");
+  }
+});
+
+// 【変更】タスクの削除処理（Delete）
+app.post("/todos/:id/delete", async (req, res) => {
+  try {
+    // URLから削除したいタスクのIDを取得して数値に変換
+    const todoId = Number(req.params.id);
+
+    // Prismaを使って、データベースからそのIDのタスクを削除
+    await prisma.todo.delete({
+      where: { id: todoId },
+    });
+
+    // 削除が終わったらトップ画面に戻す（再読み込み）
+    res.redirect("/");
+  } catch (error) {
+    console.error("タスクの削除に失敗したぞよ:", error);
     res.status(500).send("エラーが発生しました");
   }
 });
