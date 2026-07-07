@@ -2,157 +2,220 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <title>シンプルタスク管理アプリ</title>
+  <title>進化系タスク管理アプリ</title>
   <style>
-    /* 最初は要素を隠しておくための共通スタイル */
+    body { font-family: sans-serif; max-width: 650px; margin: 0 auto; padding: 20px; background: #f7fafc; color: #4a5568; }
+    h1, h2 { color: #2d3748; }
     .hidden { display: none; }
     
-    /* タスク一覧の分類プルダウンをただの文字っぽく見せるスタイル */
-    .inline-select {
-      border: none;
-      background: transparent;
-      font-weight: bold;
-      color: #2b6cb0;
-      cursor: pointer;
-      padding: 0;
-      font-size: 0.9em;
-      margin-right: 5px;
-    }
-    .inline-select.completed {
-      color: gray;
-      font-weight: normal;
-    }
-
-    /* 重要度バッジの見た目を少し整えるスタイル */
-    .priority-badge {
-      font-size: 0.85em;
-      margin-right: 8px;
-      padding: 2px 4px;
-      border-radius: 4px;
-      background-color: #f7fafc;
+    /* タスク一覧のスクロール枠 */
+    .todo-container {
+      background: white;
       border: 1px solid #e2e8f0;
+      border-radius: 8px;
+      max-height: 400px;
+      overflow-y: auto;
+      padding: 10px;
+      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
     }
+    .todo-item {
+      padding: 10px 8px;
+      border-bottom: 1px solid #edf2f7;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .todo-item:last-child { border-bottom: none; }
+
+    /* 各種インライン編集用スタイリング */
+    .inline-select { border: 1px solid #e2e8f0; border-radius: 4px; background: #f7fafc; font-weight: bold; color: #2b6cb0; cursor: pointer; font-size: 0.9em; padding: 4px; }
+    .inline-select.completed { color: gray; font-weight: normal; background: #edf2f7; }
+    
+    .inline-input-title { flex-grow: 1; border: 1px solid transparent; background: transparent; font-size: 1em; font-weight: bold; padding: 4px; border-radius: 4px; color: #2d3748; width: 100%; }
+    .inline-input-title:hover { border-color: #cbd5e0; background: #fff; cursor: pointer; }
+    .inline-input-title:focus { border-color: #4c51bf; background: #fff; outline: none; cursor: text; }
+    .inline-input-title.completed { color: gray; text-decoration: line-through; font-weight: normal; }
+
+    .inline-date { border: 1px solid #e2e8f0; border-radius: 4px; padding: 4px; font-size: 0.85em; color: #4a5568; background: #f7fafc; }
+
+    /* 入力部分の装飾 */
+    .form-toggle-btn { background: #4c51bf; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin-bottom: 10px; font-weight: bold; }
+    .input-box { background: white; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
+    .big-textarea { width: 100%; height: 80px; padding: 8px; border: 1px solid #cbd5e0; border-radius: 4px; box-sizing: border-box; resize: none; font-size: 1em; }
+    .form-group { margin-bottom: 10px; }
+    .form-group label { display: block; font-weight: bold; margin-bottom: 4px; font-size: 0.9em; }
+    .standard-input { width: 100%; padding: 8px; border: 1px solid #cbd5e0; border-radius: 4px; box-sizing: border-box; }
+    .submit-btn { width: 100%; background: #48bb78; color: white; border: none; padding: 10px; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+    
+    /* 完了/未完了トグルボタン */
+    .toggle-check-btn { background: none; border: 1px solid #cbd5e0; border-radius: 50%; width: 22px; height: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.75em; padding: 0; color: transparent; transition: all 0.2s; }
+    .toggle-check-btn:hover { border-color: #48bb78; color: #48bb78; }
+    .toggle-check-btn.completed { background: #48bb78; border-color: #48bb78; color: white; }
   </style>
 </head>
 <body>
   <h1>タスク一覧</h1>
-  <ul>
-    <% todos.forEach(todo => { %>
-      <li style="margin-bottom: 10px; display: flex; align-items: center;">
-        
-        <span class="priority-badge">
-          <% if (todo.priority === '高') { %>
-            🚨 高
-          <% } else if (todo.priority === '低') { %>
-            🟢 低
-          <% } else { %>
-            🟡 中
-          <% } %>
-        </span>
+  
+  <div class="todo-container">
+    <% if (todos.length === 0) { %>
+      <p style="color: gray; text-align: center;">タスクはまだありませんぞよ。</p>
+    <% } %>
+    <ul>
+      <% todos.forEach(todo => { %>
+        <li class="todo-item">
+          
+          <form action="/todos/<%= todo.id %>/toggle" method="POST" style="display: flex; align-items: center;">
+            <button type="submit" class="toggle-check-btn <%= todo.isCompleted ? 'completed' : '' %>" title="<%= todo.isCompleted ? '未完了に戻す' : '完了にする' %>">✓</button>
+          </form>
 
-        <form action="/todos/<%= todo.id %>/category" method="POST" style="display: inline; margin-right: 5px;">
-          <select name="categoryId" class="inline-select <%= todo.isCompleted ? 'completed' : '' %>" onchange="this.form.submit()">
-            <option value="指定なし" <%= !todo.categoryId ? 'selected' : '' %>>[分類なし ▾]</option>
-            
+          <form action="/todos/<%= todo.id %>/update" method="POST" style="display: flex; align-items: center;">
+            <select name="priority" class="inline-select <%= todo.isCompleted ? 'completed' : '' %>" onchange="this.form.submit()">
+              <option value="高" <%= todo.priority === '高' ? 'selected' : '' %>>🚨 高</option>
+              <option value="中" <%= todo.priority === '中' ? 'selected' : '' %>>🟡 中</option>
+              <option value="低" <%= todo.priority === '低' ? 'selected' : '' %>>🟢 低</option>
+            </select>
+          </form>
+
+          <form action="/todos/<%= todo.id %>/category" method="POST" style="display: flex; align-items: center;">
+            <select name="categoryId" class="inline-select <%= todo.isCompleted ? 'completed' : '' %>" onchange="this.form.submit()">
+              <option value="指定なし" <%= !todo.categoryId ? 'selected' : '' %>>[分類なし ▾]</option>
+              <% 
+                let options = [...categories];
+                if (todo.category && !options.some(c => c.id === todo.categoryId)) { options.push(todo.category); }
+                options.forEach(cat => { 
+              %>
+                <option value="<%= cat.id %>" <%= todo.categoryId === cat.id ? 'selected' : '' %>>[<%= cat.name %> ▾]</option>
+              <% }) %>
+              <% if (todo.categoryId) { %><option value="指定なし">❌ 分類を外す</option><% } %>
+            </select>
+          </form>
+
+          <form action="/todos/<%= todo.id %>/update" method="POST" style="flex-grow: 1; display: flex; align-items: center;">
+            <input type="text" name="title" class="inline-input-title <%= todo.isCompleted ? 'completed' : '' %>" 
+                   value="<%= todo.title %>" 
+                   onchange="this.form.submit()" 
+                   placeholder="タスク名を入力してください"
+                   <%= todo.isCompleted ? 'disabled' : '' %>>
+          </form>
+
+          <form action="/todos/<%= todo.id %>/update" method="POST" style="display: flex; align-items: center;">
             <% 
-              let options = [...categories];
-              if (todo.category && !options.some(c => c.id === todo.categoryId)) {
-                options.push(todo.category);
+              let dateString = "";
+              if (todo.dueDate) {
+                const d = new Date(todo.dueDate);
+                // タイムゾーンを考慮して YYYY-MM-DD 形式の文字列を作る
+                dateString = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
               }
-              options.forEach(cat => { 
             %>
-              <option value="<%= cat.id %>" <%= todo.categoryId === cat.id ? 'selected' : '' %>>
-                [<%= cat.name %> ▾]
-              </option>
-            <% }) %>
-            
-            <% if (todo.categoryId) { %>
-              <option value="指定なし">❌ 分類を外す</option>
-            <% } %>
-          </select>
-        </form>
+            <input type="date" name="dueDate" class="inline-date" value="<%= dateString %>" onchange="this.form.submit()">
+          </form>
 
-        <form action="/todos/<%= todo.id %>/toggle" method="POST" style="display: inline;">
-          <% if (todo.isCompleted) { %>
-            <span style="color: gray; text-decoration: line-through; margin-right: 10px;">
-              <strong><%= todo.title %></strong> (完了)
-              <% if (todo.dueDate) { %>
-                <span style="font-size: 0.9em; color: darkgray; margin-left: 10px;">
-                  ⏰ 期日: <%= new Date(todo.dueDate).toLocaleDateString("ja-JP") %>
-                </span>
-              <% } %>
-            </span>
-            <button type="submit">未完了に戻す</button>
-          <% } else { %>
-            <span style="margin-right: 10px;">
-              <strong><%= todo.title %></strong> <span style="color: red;">(未完了)</span>
-              <% if (todo.dueDate) { %>
-                <span style="font-size: 0.9em; color: #555; margin-left: 10px;">
-                  ⏰ 期日: <%= new Date(todo.dueDate).toLocaleDateString("ja-JP") %>
-                </span>
-              <% } %>
-            </span>
-            <button type="submit">完了する</button>
-          <% } %>
-        </form>
+          <form action="/todos/<%= todo.id %>/delete" method="POST" style="display: flex; align-items: center; margin-left: 4px;">
+            <button type="submit" style="color: white; background-color: #e53e3e; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">削除</button>
+          </form>
 
-        <form action="/todos/<%= todo.id %>/delete" method="POST" style="display: inline; margin-left: 10px;">
-          <button type="submit" style="color: white; background-color: red; border: none; padding: 3px 8px; cursor: pointer;">削除</button>
-        </form>
-
-      </li>
-    <% }) %>
-  </ul>
+        </li>
+      <% }) %>
+    </ul>
+  </div>
 
   <h2>タスクを追加する</h2>
 
   <% if (error === 'duplicate') { %>
-    <p style="color: red; font-weight: bold; background-color: #fff5f5; border: 1px solid #fed7d7; padding: 10px; border-radius: 4px; display: inline-block; margin-top: 0;">
-      ⚠️ そのタスクは既に同じ内容（タスク名・期日）で追加されていますぞよ。
+    <p style="color: #e53e3e; font-weight: bold; background-color: #fff5f5; border: 1px solid #fed7d7; padding: 10px; border-radius: 4px; margin-bottom: 10px;">
+      ⚠️ 同一内容（タスク名・期日）のタスクが既に存在しますぞよ。
     </p>
   <% } %>
 
-  <form id="todoForm" action="/todos" method="POST" style="display: block;">
-    <input type="text" name="title" placeholder="新しいタスクを入力してください" required>
-    
-    <label style="margin-left: 10px; margin-right: 10px;">
-      期日: <input type="date" name="dueDate">
-    </label>
+  <button type="button" class="form-toggle-btn" id="toggleModeBtn" onclick="toggleInputMode()">💬 メモ風に自由に入力する</button>
 
-    <label style="margin-right: 10px;">
-      分類: 
-      <select name="categoryId" id="categorySelect" onchange="handleCategoryChange()">
-        <option value="指定なし">指定なし</option>
-        <% categories.forEach(cat => { %>
-          <option value="<%= cat.id %>"><%= cat.name %></option>
-        <% }) %>
-        <option value="__NEW__">（＋ 新しい分類を追加）</option>
-      </select>
-    </label>
+  <div class="input-box">
+    <form id="todoForm" action="/todos" method="POST">
+      
+      <div id="simpleInputMode" class="hidden">
+        <textarea name="titleSimple" id="titleSimple" class="big-textarea" placeholder="ここにタスクを自由に書きなぐってください（例：部屋の掃除をする）"></textarea>
+      </div>
 
-    <span id="newCategoryWrapper" class="hidden">
-      <input type="text" name="newCategory" placeholder="新しい分類名を入力">
-    </span>
+      <div id="detailInputMode">
+        <div class="form-group">
+          <label>タスク名</label>
+          <input type="text" name="title" id="titleDetail" class="standard-input" placeholder="新しいタスクを入力してください">
+        </div>
+        
+        <div style="display: flex; gap: 10px;">
+          <div class="form-group" style="flex: 1;">
+            <label>期日</label>
+            <input type="date" name="dueDate" class="standard-input">
+          </div>
+          <div class="form-group" style="flex: 1;">
+            <label>重要度</label>
+            <select name="priority" class="standard-input">
+              <option value="高">🚨 高</option>
+              <option value="中" selected>🟡 中</option>
+              <option value="低">🟢 低</option>
+            </select>
+          </div>
+        </div>
 
-    <label style="margin-right: 10px; margin-left: 5px;">
-      重要度: 
-      <select name="priority">
-        <option value="高">🚨 高</option>
-        <option value="中" selected>🟡 中</option>
-        <option value="低">🟢 低</option>
-      </select>
-    </label>
+        <div class="form-group">
+          <label>分類（カテゴリ）</label>
+          <select name="categoryId" id="categorySelect" class="standard-input" onchange="handleCategoryChange()">
+            <option value="指定なし">指定なし</option>
+            <% categories.forEach(cat => { %>
+              <option value="<%= cat.id %>"><%= cat.name %></option>
+            <% }) %>
+            <option value="__NEW__">（＋ 新しい分類を追加）</option>
+          </select>
+          <span id="newCategoryWrapper" class="hidden" style="display: block; margin-top: 5px;">
+            <input type="text" name="newCategory" class="standard-input" placeholder="新しい分類名を入力">
+          </span>
+        </div>
+      </div>
 
-    <button type="submit" id="submitBtn">追加</button>
+      <button type="submit" class="submit-btn">タスクを追加</button>
 
-    <button type="button" id="deleteCategoryBtn" class="hidden" onclick="deleteSelectedCategory()" style="margin-left: 5px; color: red; background: none; border: 1px solid red; padding: 2px 6px; cursor: pointer;">
-      ❌ この分類自体を削除
-    </button>
-  </form>
+      <button type="button" id="deleteCategoryBtn" class="hidden" onclick="deleteSelectedCategory()" style="margin-top: 10px; color: #e53e3e; background: none; border: 1px solid #e53e3e; padding: 4px 8px; border-radius: 4px; cursor: pointer; width: 100%;">
+        ❌ この分類自体を非表示にする
+      </button>
+    </form>
+  </div>
 
-  <p style="margin-top: 20px;"><a href="/">最新の状態に更新</a></p>
+  <p style="margin-top: 20px; text-align: center;"><a href="/" style="color: #4c51bf; text-decoration: none; font-weight: bold;">🔄 画面を更新する</a></p>
 
   <script>
+    let currentMode = 'detail'; 
+    const toggleBtn = document.getElementById('toggleModeBtn');
+    const simpleMode = document.getElementById('simpleInputMode');
+    const detailMode = document.getElementById('detailInputMode');
+    const titleSimple = document.getElementById('titleSimple');
+    const titleDetail = document.getElementById('titleDetail');
+
+    function toggleInputMode() {
+      if (currentMode === 'detail') {
+        currentMode = 'simple';
+        toggleBtn.innerText = '📋 詳細に項目を指定して入力する';
+        detailMode.classList.add('hidden');
+        simpleMode.classList.remove('hidden');
+        titleDetail.required = false;
+        titleSimple.required = true;
+        titleSimple.value = titleDetail.value;
+      } else {
+        currentMode = 'detail';
+        toggleBtn.innerText = '💬 メモ風に自由に入力する';
+        simpleMode.classList.add('hidden');
+        detailMode.classList.remove('hidden');
+        titleSimple.required = false;
+        titleDetail.required = true;
+        titleDetail.value = titleSimple.value;
+      }
+    }
+
+    document.getElementById('todoForm').addEventListener('submit', function(e) {
+      if (currentMode === 'simple') {
+        titleDetail.value = titleSimple.value;
+      }
+    });
+
     const select = document.getElementById('categorySelect');
     const newWrapper = document.getElementById('newCategoryWrapper');
     const deleteBtn = document.getElementById('deleteCategoryBtn');
@@ -164,7 +227,6 @@
       } else {
         newWrapper.classList.add('hidden');
       }
-
       if (select.value !== '指定なし' && select.value !== '__NEW__') {
         deleteBtn.classList.remove('hidden');
       } else {
