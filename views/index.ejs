@@ -23,7 +23,7 @@
       font-weight: normal;
     }
 
-    /* 【新設】重要度バッジの見た目を少し整えるスタイル */
+    /* 重要度バッジの見た目を少し整えるスタイル */
     .priority-badge {
       font-size: 0.85em;
       margin-right: 8px;
@@ -105,7 +105,14 @@
   </ul>
 
   <h2>タスクを追加する</h2>
-  <form id="todoForm" action="/todos" method="POST" style="display: inline;">
+
+  <% if (error === 'duplicate') { %>
+    <p style="color: red; font-weight: bold; background-color: #fff5f5; border: 1px solid #fed7d7; padding: 10px; border-radius: 4px; display: inline-block; margin-top: 0;">
+      ⚠️ そのタスクは既に同じ内容（タスク名・期日）で追加されていますぞよ。
+    </p>
+  <% } %>
+
+  <form id="todoForm" action="/todos" method="POST" style="display: block;">
     <input type="text" name="title" placeholder="新しいタスクを入力してください" required>
     
     <label style="margin-left: 10px; margin-right: 10px;">

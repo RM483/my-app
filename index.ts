@@ -18,19 +18,27 @@ app.use(express.urlencoded({ extended: true }));
 // 一覧表示：タスク一覧と有効な分類一覧を取得して画面に渡す
 app.get("/", async (req, res) => {
   try {
-    // タスク一覧を取得（紐づく分類データも一緒に読み込む）
+    // URLのパラメータからエラーの種類（あれば）を取得
+    const errorType = req.query.error as string | undefined;
+
+    // タスク一覧を取得
     const todos = await prisma.todo.findMany({
       include: { category: true },
       orderBy: { id: "asc" },
     });
 
-    // 選択肢用のプルダウンに並べる「有効な分類」だけを取得する
+    // 有効な分類一覧を取得
     const activeCategories = await prisma.category.findMany({
       where: { isActive: true },
       orderBy: { id: "asc" },
     });
 
-    res.render("index", { todos, categories: activeCategories });
+    // 画面に errorType も一緒に渡す
+    res.render("index", {
+      todos,
+      categories: activeCategories,
+      error: errorType,
+    });
   } catch (error) {
     console.error("データ取得に失敗したぞよ:", error);
     res.status(500).send("エラーが発生しました");
@@ -40,39 +48,52 @@ app.get("/", async (req, res) => {
 // タスクの追加処理
 app.post("/todos", async (req, res) => {
   try {
-    // 【変更】画面から送られてくる priority（重要度）も新しく受け取る
     const { title, dueDate, categoryId, newCategory, priority } = req.body;
 
     if (!title || title.trim() === "") {
       return res.redirect("/");
     }
 
+    const cleanedTitle = title.trim();
+
     // 期日のデータ整形
     let parsedDueDate: Date | null = null;
     if (dueDate && dueDate.trim() !== "") {
+      // 日時が被っているかを正確に判定するため、時間のズレをなくした「日付のみ」の状態にする
       parsedDueDate = new Date(dueDate);
+      parsedDueDate.setHours(0, 0, 0, 0);
+    }
+
+    // 🚨【新設】タスクの重複チェックロジック
+    // 「タイトルが一致」かつ「期日が一致（両方なし、または同じ日付）」のものを探す
+    const existingTodo = await prisma.todo.findFirst({
+      where: {
+        title: cleanedTitle,
+        dueDate: parsedDueDate, // null 同士、または同じ日付オブジェクト同士で比較
+      },
+    });
+
+    // もし既に見つかった場合は、URLにエラーをつけてトップに戻す（追加しない）
+    if (existingTodo) {
+      return res.redirect("/?error=duplicate");
     }
 
     // 分類IDの決定ロジック
     let targetCategoryId: number | null = null;
 
     if (categoryId === "__NEW__" && newCategory && newCategory.trim() !== "") {
-      // 「新しい分類を追加」が選ばれ、手入力がある場合はテーブルに新規登録
       const categoryName = newCategory.trim();
 
-      // 【修正】まずは同じ名前の分類がすでにデータベースにあるか探す
       let category = await prisma.category.findFirst({
         where: { name: categoryName },
       });
 
       if (category) {
-        // すでに存在していたら、非表示になっていたとしても有効（true）に戻す
         category = await prisma.category.update({
           where: { id: category.id },
           data: { isActive: true },
         });
       } else {
-        // 完全に新しい名前なら新規作成する
         category = await prisma.category.create({
           data: { name: categoryName },
         });
@@ -83,17 +104,16 @@ app.post("/todos", async (req, res) => {
       categoryId !== "指定なし" &&
       categoryId !== "__NEW__"
     ) {
-      // 既存の分類が選ばれた場合
       targetCategoryId = Number(categoryId);
     }
 
-    // タスクをデータベースに保存
+    // 重複がなければタスクをデータベースに保存
     await prisma.todo.create({
       data: {
-        title: title,
+        title: cleanedTitle,
         dueDate: parsedDueDate,
         categoryId: targetCategoryId,
-        priority: priority || "中", // 【新設】重要度を保存（もし空なら"中"にする）
+        priority: priority || "中",
       },
     });
     res.redirect("/");
