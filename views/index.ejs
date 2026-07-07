@@ -6,8 +6,47 @@
   <style>
     body { font-family: sans-serif; max-width: 650px; margin: 0 auto; padding: 20px; background: #f7fafc; color: #4a5568; }
     h1, h2 { color: #2d3748; }
-    .hidden { display: none; }
+    .hidden { display: none !important; }
     
+    /* カテゴリフィルターボタンの帯（横スクロール対応） */
+    .category-filter-container {
+      display: flex;
+      gap: 8px;
+      overflow-x: auto;
+      padding: 10px 4px;
+      margin-bottom: 15px;
+      white-space: nowrap;
+      -webkit-overflow-scrolling: touch;
+    }
+    .category-filter-container::-webkit-scrollbar { height: 5px; }
+    .category-filter-container::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 4px; }
+
+    /* フィルターボタンの基本スタイル（ONの状態） */
+    .filter-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      background: #3182ce;
+      color: white;
+      border: 1px solid #3182ce;
+      padding: 6px 12px;
+      border-radius: 20px;
+      cursor: pointer;
+      font-weight: bold;
+      font-size: 0.85em;
+      transition: all 0.2s;
+    }
+    /* ボタンがOFF（非表示モード）になったときのスタイル */
+    .filter-btn.off {
+      background: #edf2f7;
+      color: #a0aec0;
+      border-color: #e2e8f0;
+      font-weight: normal;
+    }
+    /* マスターボタン（すべて）専用スタイル */
+    .filter-btn.master-btn { background: #4c51bf; border-color: #4c51bf; }
+    .filter-btn.master-btn.off { background: #edf2f7; border-color: #e2e8f0; color: #a0aec0; }
+
     /* タスク一覧のスクロール枠 */
     .todo-container {
       background: white;
@@ -31,6 +70,9 @@
     .inline-select { border: 1px solid #e2e8f0; border-radius: 4px; background: #f7fafc; font-weight: bold; color: #2b6cb0; cursor: pointer; font-size: 0.9em; padding: 4px; }
     .inline-select.completed { color: gray; font-weight: normal; background: #edf2f7; }
     
+    /* 💡 インラインカテゴリ作成用の入力欄スタイル */
+    .inline-cat-input { border: 1px solid #4c51bf; border-radius: 4px; padding: 3px; font-size: 0.9em; width: 100px; font-weight: bold; }
+
     .inline-input-title { flex-grow: 1; border: 1px solid transparent; background: transparent; font-size: 1em; font-weight: bold; padding: 4px; border-radius: 4px; color: #2d3748; width: 100%; }
     .inline-input-title:hover { border-color: #cbd5e0; background: #fff; cursor: pointer; }
     .inline-input-title:focus { border-color: #4c51bf; background: #fff; outline: none; cursor: text; }
@@ -56,13 +98,31 @@
 <body>
   <h1>タスク一覧</h1>
   
+  <% if (categories.length > 0 || todos.some(t => !t.categoryId)) { %>
+    <div class="category-filter-container">
+      <button type="button" class="filter-btn master-btn" id="masterFilterBtn" onclick="toggleMasterFilter()">
+        <span class="icon">📄</span> すべて表示
+      </button>
+
+      <% categories.forEach(cat => { %>
+        <button type="button" class="filter-btn category-btn" data-category-id="<%= cat.id %>" onclick="toggleCategoryFilter(this)">
+          <span class="check-mark">✓</span> <%= cat.name %>
+        </button>
+      <% }) %>
+
+      <button type="button" class="filter-btn category-btn" data-category-id="none" onclick="toggleCategoryFilter(this)">
+        <span class="check-mark">✓</span> [分類なし]
+      </button>
+    </div>
+  <% } %>
+
   <div class="todo-container">
     <% if (todos.length === 0) { %>
       <p style="color: gray; text-align: center;">タスクはまだありませんぞよ。</p>
     <% } %>
-    <ul>
+    <ul style="list-style: none; padding: 0; margin: 0;">
       <% todos.forEach(todo => { %>
-        <li class="todo-item">
+        <li class="todo-item" data-cat="<%= todo.categoryId ? todo.categoryId : 'none' %>">
           
           <form action="/todos/<%= todo.id %>/toggle" method="POST" style="display: flex; align-items: center;">
             <button type="submit" class="toggle-check-btn <%= todo.isCompleted ? 'completed' : '' %>" title="<%= todo.isCompleted ? '未完了に戻す' : '完了にする' %>">✓</button>
@@ -76,19 +136,22 @@
             </select>
           </form>
 
-          <form action="/todos/<%= todo.id %>/category" method="POST" style="display: flex; align-items: center;">
-            <select name="categoryId" class="inline-select <%= todo.isCompleted ? 'completed' : '' %>" onchange="this.form.submit()">
-              <option value="指定なし" <%= !todo.categoryId ? 'selected' : '' %>>[分類なし ▾]</option>
-              <% 
-                let options = [...categories];
-                if (todo.category && !options.some(c => c.id === todo.categoryId)) { options.push(todo.category); }
-                options.forEach(cat => { 
-              %>
-                <option value="<%= cat.id %>" <%= todo.categoryId === cat.id ? 'selected' : '' %>>[<%= cat.name %> ▾]</option>
-              <% }) %>
-              <% if (todo.categoryId) { %><option value="指定なし">❌ 分類を外す</option><% } %>
-            </select>
-          </form>
+          <div style="display: flex; align-items: center;">
+            <form action="/todos/<%= todo.id %>/category" method="POST" id="catForm-<%= todo.id %>" style="display: flex; align-items: center;">
+              <select name="categoryId" class="inline-select <%= todo.isCompleted ? 'completed' : '' %>" onchange="handleInlineCategoryChange(this, '<%= todo.id %>')">
+                <option value="指定なし" <%= !todo.categoryId ? 'selected' : '' %>>[分類なし ▾]</option>
+                <% categories.forEach(cat => { %>
+                  <option value="<%= cat.id %>" <%= todo.categoryId === cat.id ? 'selected' : '' %>>[<%= cat.name %> ▾]</option>
+                <% }) %>
+                <% if (todo.categoryId) { %><option value="指定なし">❌ 分類を外す</option><% } %>
+                <option value="__INLINE_NEW__">➕ （新しい分類を追加）</option>
+              </select>
+            </form>
+
+            <form action="/todos/<%= todo.id %>/category/create" method="POST" id="newCatForm-<%= todo.id %>" class="hidden" style="display: flex; align-items: center;">
+              <input type="text" name="newCategoryName" class="inline-cat-input" placeholder="分類名を入力..." onblur="cancelInlineCategory('<%= todo.id %>')">
+            </form>
+          </div>
 
           <form action="/todos/<%= todo.id %>/update" method="POST" style="flex-grow: 1; display: flex; align-items: center;">
             <input type="text" name="title" class="inline-input-title <%= todo.isCompleted ? 'completed' : '' %>" 
@@ -103,7 +166,6 @@
               let dateString = "";
               if (todo.dueDate) {
                 const d = new Date(todo.dueDate);
-                // タイムゾーンを考慮して YYYY-MM-DD 形式の文字列を作る
                 dateString = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
               }
             %>
@@ -183,6 +245,115 @@
   <p style="margin-top: 20px; text-align: center;"><a href="/" style="color: #4c51bf; text-decoration: none; font-weight: bold;">🔄 画面を更新する</a></p>
 
   <script>
+    // 💡 新機能：タスク一覧のプルダウンで「新しい分類を追加」が選ばれた時の処理
+    function handleInlineCategoryChange(selectElem, todoId) {
+      if (selectElem.value === '__INLINE_NEW__') {
+        const selectForm = document.getElementById(`catForm-${todoId}`);
+        const inputForm = document.getElementById(`newCatForm-${todoId}`);
+        const inputField = inputForm.querySelector('input[type="text"]');
+
+        // プルダウンを隠し、テキスト入力欄を出す
+        selectForm.classList.add('hidden');
+        inputForm.classList.remove('hidden');
+        inputField.focus(); // すぐに入力できるようにフォーカス
+      } else {
+        // 通常のカテゴリ変更時はそのまま送信
+        selectElem.form.submit();
+      }
+    }
+
+    // 💡 新機能：入力欄からフォーカスが外れたりキャンセルされた時の処理
+    function cancelInlineCategory(todoId) {
+      // わずかに遅らせて、Enterキーでの送信イベントが先に走るようにする
+      setTimeout(() => {
+        const selectForm = document.getElementById(`catForm-${todoId}`);
+        const inputForm = document.getElementById(`newCatForm-${todoId}`);
+        const inputField = inputForm.querySelector('input[type="text"]');
+
+        // 文字が何も入っていなければ元のプルダウンに戻す
+        if (inputField.value.trim() === "") {
+          inputForm.classList.add('hidden');
+          selectForm.classList.remove('hidden');
+          selectForm.querySelector('select').value = "指定なし";
+        } else {
+          // 文字が入っていればフォームを送信してカテゴリ作成へ
+          inputForm.submit();
+        }
+      }, 200);
+    }
+
+    // カテゴリごとのON/OFFを切り替える関数
+    function toggleCategoryFilter(btn) {
+      btn.classList.toggle('off');
+      const checkMark = btn.querySelector('.check-mark');
+      if (btn.classList.contains('off')) {
+        checkMark.innerText = '';
+      } else {
+        checkMark.innerText = '✓';
+      }
+      applyFilters();
+    }
+
+    // マスターボタン（すべて）を押したときの処理
+    function toggleMasterFilter() {
+      const masterBtn = document.getElementById('masterFilterBtn');
+      const categoryButtons = document.querySelectorAll('.category-btn');
+
+      if (masterBtn.classList.contains('off')) {
+        masterBtn.classList.remove('off');
+        masterBtn.querySelector('.icon').innerText = '📄';
+        categoryButtons.forEach(btn => {
+          btn.classList.remove('off');
+          btn.querySelector('.check-mark').innerText = '✓';
+        });
+      } else {
+        masterBtn.classList.add('off');
+        masterBtn.querySelector('.icon').innerText = '❌';
+        categoryButtons.forEach(btn => {
+          btn.classList.add('off');
+          btn.querySelector('.check-mark').innerText = '';
+        });
+      }
+      applyFilters();
+    }
+
+    // 実際にタスクを表示・非表示にするロジック
+    function applyFilters() {
+      const masterBtn = document.getElementById('masterFilterBtn');
+      const categoryButtons = document.querySelectorAll('.category-btn');
+      const todoItems = document.querySelectorAll('.todo-item');
+
+      if (!masterBtn) return; // ボタンが1つもない場合はスキップ
+
+      const activeCategoryIds = [];
+      categoryButtons.forEach(btn => {
+        if (!btn.classList.contains('off')) {
+          activeCategoryIds.push(btn.getAttribute('data-category-id'));
+        }
+      });
+
+      if (activeCategoryIds.length === categoryButtons.length) {
+        masterBtn.classList.remove('off');
+        masterBtn.querySelector('.icon').innerText = '📄';
+      } else if (activeCategoryIds.length === 0) {
+        masterBtn.classList.add('off');
+        masterBtn.querySelector('.icon').innerText = '❌';
+      } else {
+        masterBtn.classList.add('off');
+        masterBtn.querySelector('.icon').innerText = '➖';
+      }
+
+      todoItems.forEach(item => {
+        const itemCatId = item.getAttribute('data-cat');
+        if (activeCategoryIds.includes(itemCatId)) {
+          item.classList.remove('hidden');
+        } else {
+          item.classList.add('hidden');
+        }
+      });
+    }
+
+    // --- 既存の入力フォーム切り替え用スクリプト ---
     let currentMode = 'detail'; 
     const toggleBtn = document.getElementById('toggleModeBtn');
     const simpleMode = document.getElementById('simpleInputMode');
