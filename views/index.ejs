@@ -70,7 +70,7 @@
     .inline-select { border: 1px solid #e2e8f0; border-radius: 4px; background: #f7fafc; font-weight: bold; color: #2b6cb0; cursor: pointer; font-size: 0.9em; padding: 4px; }
     .inline-select.completed { color: gray; font-weight: normal; background: #edf2f7; }
     
-    /* 💡 インラインカテゴリ作成用の入力欄スタイル */
+    /* インラインカテゴリ作成用の入力欄スタイル */
     .inline-cat-input { border: 1px solid #4c51bf; border-radius: 4px; padding: 3px; font-size: 0.9em; width: 100px; font-weight: bold; }
 
     .inline-input-title { flex-grow: 1; border: 1px solid transparent; background: transparent; font-size: 1em; font-weight: bold; padding: 4px; border-radius: 4px; color: #2d3748; width: 100%; }
@@ -87,8 +87,17 @@
     .form-group { margin-bottom: 10px; }
     .form-group label { display: block; font-weight: bold; margin-bottom: 4px; font-size: 0.9em; }
     .standard-input { width: 100%; padding: 8px; border: 1px solid #cbd5e0; border-radius: 4px; box-sizing: border-box; }
-    .submit-btn { width: 100%; background: #48bb78; color: white; border: none; padding: 10px; border-radius: 4px; font-weight: bold; cursor: pointer; margin-top: 10px; }
     
+    /* 💡 ボタン配置エリア用スタイル */
+    .form-actions { display: flex; gap: 10px; margin-top: 15px; }
+    .submit-btn { flex: 2; background: #48bb78; color: white; border: none; padding: 10px; border-radius: 4px; font-weight: bold; cursor: pointer; }
+    /* 💡 控えめなリセットボタンのスタイル */
+    .reset-btn { flex: 1; background: #fff; color: #718096; border: 1px solid #cbd5e0; padding: 10px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
+    .reset-btn:hover { background: #f7fafc; color: #4a5568; border-color: #a0aec0; }
+    
+    /* 💡 ブラウザ上でのエラーメッセージ用スタイル */
+    .client-error-msg { color: #e53e3e; font-weight: bold; background-color: #fff5f5; border: 1px solid #fed7d7; padding: 10px; border-radius: 4px; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
+
     /* 完了/未完了トグルボタン */
     .toggle-check-btn { background: none; border: 1px solid #cbd5e0; border-radius: 50%; width: 22px; height: 22px; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 0.75em; padding: 0; color: transparent; transition: all 0.2s; }
     .toggle-check-btn:hover { border-color: #48bb78; color: #48bb78; }
@@ -183,6 +192,10 @@
 
   <h2>タスクを追加する</h2>
 
+  <div id="validationErrorBox" class="client-error-msg hidden">
+    ⚠️ タスク名を入力してくださいな。
+  </div>
+
   <% if (error === 'duplicate') { %>
     <p style="color: #e53e3e; font-weight: bold; background-color: #fff5f5; border: 1px solid #fed7d7; padding: 10px; border-radius: 4px; margin-bottom: 10px;">
       ⚠️ 同一内容（タスク名・期日）のタスクが既に存在しますぞよ。
@@ -207,11 +220,11 @@
         <div style="display: flex; gap: 10px;">
           <div class="form-group" style="flex: 1;">
             <label>期日</label>
-            <input type="date" name="dueDate" class="standard-input">
+            <input type="date" name="dueDate" id="dueDateField" class="standard-input">
           </div>
           <div class="form-group" style="flex: 1;">
             <label>重要度</label>
-            <select name="priority" class="standard-input">
+            <select name="priority" id="prioritySelect" class="standard-input">
               <option value="高">🚨 高</option>
               <option value="中" selected>🟡 中</option>
               <option value="低">🟢 低</option>
@@ -229,12 +242,15 @@
             <option value="__NEW__">（＋ 新しい分類を追加）</option>
           </select>
           <span id="newCategoryWrapper" class="hidden" style="display: block; margin-top: 5px;">
-            <input type="text" name="newCategory" class="standard-input" placeholder="新しい分類名を入力">
+            <input type="text" name="newCategory" id="newCategoryInput" class="standard-input" placeholder="新しい分類名を入力">
           </span>
         </div>
       </div>
 
-      <button type="submit" class="submit-btn">タスクを追加</button>
+      <div class="form-actions">
+        <button type="submit" class="submit-btn">タスクを追加</button>
+        <button type="button" class="reset-btn" onclick="resetWholeForm()">🔄 全てリセット</button>
+      </div>
 
       <button type="button" id="deleteCategoryBtn" class="hidden" onclick="deleteSelectedCategory()" style="margin-top: 10px; color: #e53e3e; background: none; border: 1px solid #e53e3e; padding: 4px 8px; border-radius: 4px; cursor: pointer; width: 100%;">
         ❌ この分類自体を非表示にする
@@ -245,38 +261,82 @@
   <p style="margin-top: 20px; text-align: center;"><a href="/" style="color: #4c51bf; text-decoration: none; font-weight: bold;">🔄 画面を更新する</a></p>
 
   <script>
-    // 💡 新機能：タスク一覧のプルダウンで「新しい分類を追加」が選ばれた時の処理
+    // 💡 【新機能】送信ボタンが押されたときのバリデーション処理
+    document.getElementById('todoForm').addEventListener('submit', function(e) {
+      const errorBox = document.getElementById('validationErrorBox');
+      let isFormEmpty = false;
+
+      // 現在の入力モードに応じて判定対象を切り替える
+      if (currentMode === 'simple') {
+        if (titleSimple.value.trim() === "") {
+          isFormEmpty = true;
+        } else {
+          titleDetail.value = titleSimple.value; // 値を同期
+        }
+      } else {
+        if (titleDetail.value.trim() === "") {
+          isFormEmpty = true;
+        }
+      }
+
+      // もし空文字だったら送信を止めて、その場にエラーメッセージを表示
+      if (isFormEmpty) {
+        e.preventDefault(); // 🚨 サーバーへの送信をストップ！
+        errorBox.classList.remove('hidden'); // エラーを表示
+        window.scrollTo({ top: errorBox.offsetTop - 20, behavior: 'smooth' }); // エラー位置へ滑らかスクロール
+      } else {
+        errorBox.classList.add('hidden'); // エラーを隠す
+      }
+    });
+
+    // 💡 【新機能】全ての入力状態を完全に初期状態に戻す関数
+    function resetWholeForm() {
+      // エラーメッセージが出ていたら隠す
+      document.getElementById('validationErrorBox').classList.add('hidden');
+
+      // 文字入力欄をクリア
+      titleSimple.value = "";
+      titleDetail.value = "";
+      document.getElementById('dueDateField').value = "";
+      document.getElementById('newCategoryInput').value = "";
+
+      // プルダウンを初期位置に戻す
+      document.getElementById('prioritySelect').value = "中";
+      
+      const catSelect = document.getElementById('categorySelect');
+      catSelect.value = "指定なし";
+      
+      // カテゴリ変更に伴う補助要素のON/OFFを再計算
+      handleCategoryChange();
+    }
+
+    // タスク一覧のプルダウンで「新しい分類を追加」が選ばれた時の処理
     function handleInlineCategoryChange(selectElem, todoId) {
       if (selectElem.value === '__INLINE_NEW__') {
         const selectForm = document.getElementById(`catForm-${todoId}`);
         const inputForm = document.getElementById(`newCatForm-${todoId}`);
         const inputField = inputForm.querySelector('input[type="text"]');
 
-        // プルダウンを隠し、テキスト入力欄を出す
         selectForm.classList.add('hidden');
         inputForm.classList.remove('hidden');
-        inputField.focus(); // すぐに入力できるようにフォーカス
+        inputField.focus();
       } else {
-        // 通常のカテゴリ変更時はそのまま送信
         selectElem.form.submit();
       }
     }
 
-    // 💡 新機能：入力欄からフォーカスが外れたりキャンセルされた時の処理
+    // 入力欄からフォーカスが外れたりキャンセルされた時の処理
     function cancelInlineCategory(todoId) {
-      // わずかに遅らせて、Enterキーでの送信イベントが先に走るようにする
       setTimeout(() => {
         const selectForm = document.getElementById(`catForm-${todoId}`);
         const inputForm = document.getElementById(`newCatForm-${todoId}`);
         const inputField = inputForm.querySelector('input[type="text"]');
 
-        // 文字が何も入っていなければ元のプルダウンに戻す
         if (inputField.value.trim() === "") {
           inputForm.classList.add('hidden');
           selectForm.classList.remove('hidden');
           selectForm.querySelector('select').value = "指定なし";
         } else {
-          // 文字が入っていればフォームを送信してカテゴリ作成へ
           inputForm.submit();
         }
       }, 200);
@@ -323,7 +383,7 @@
       const categoryButtons = document.querySelectorAll('.category-btn');
       const todoItems = document.querySelectorAll('.todo-item');
 
-      if (!masterBtn) return; // ボタンが1つもない場合はスキップ
+      if (!masterBtn) return;
 
       const activeCategoryIds = [];
       categoryButtons.forEach(btn => {
@@ -353,7 +413,7 @@
       });
     }
 
-    // --- 既存の入力フォーム切り替え用スクリプト ---
+    // 既存の入力フォーム切り替え用スクリプト
     let currentMode = 'detail'; 
     const toggleBtn = document.getElementById('toggleModeBtn');
     const simpleMode = document.getElementById('simpleInputMode');
@@ -368,7 +428,6 @@
         detailMode.classList.add('hidden');
         simpleMode.classList.remove('hidden');
         titleDetail.required = false;
-        titleSimple.required = true;
         titleSimple.value = titleDetail.value;
       } else {
         currentMode = 'detail';
@@ -376,16 +435,9 @@
         simpleMode.classList.add('hidden');
         detailMode.classList.remove('hidden');
         titleSimple.required = false;
-        titleDetail.required = true;
         titleDetail.value = titleSimple.value;
       }
     }
-
-    document.getElementById('todoForm').addEventListener('submit', function(e) {
-      if (currentMode === 'simple') {
-        titleDetail.value = titleSimple.value;
-      }
-    });
 
     const select = document.getElementById('categorySelect');
     const newWrapper = document.getElementById('newCategoryWrapper');
