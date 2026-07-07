@@ -22,6 +22,16 @@
       color: gray;
       font-weight: normal;
     }
+
+    /* 【新設】重要度バッジの見た目を少し整えるスタイル */
+    .priority-badge {
+      font-size: 0.85em;
+      margin-right: 8px;
+      padding: 2px 4px;
+      border-radius: 4px;
+      background-color: #f7fafc;
+      border: 1px solid #e2e8f0;
+    }
   </style>
 </head>
 <body>
@@ -30,6 +40,16 @@
     <% todos.forEach(todo => { %>
       <li style="margin-bottom: 10px; display: flex; align-items: center;">
         
+        <span class="priority-badge">
+          <% if (todo.priority === '高') { %>
+            🚨 高
+          <% } else if (todo.priority === '低') { %>
+            🟢 低
+          <% } else { %>
+            🟡 中
+          <% } %>
+        </span>
+
         <form action="/todos/<%= todo.id %>/category" method="POST" style="display: inline; margin-right: 5px;">
           <select name="categoryId" class="inline-select <%= todo.isCompleted ? 'completed' : '' %>" onchange="this.form.submit()">
             <option value="指定なし" <%= !todo.categoryId ? 'selected' : '' %>>[分類なし ▾]</option>
@@ -107,6 +127,15 @@
       <input type="text" name="newCategory" placeholder="新しい分類名を入力">
     </span>
 
+    <label style="margin-right: 10px; margin-left: 5px;">
+      重要度: 
+      <select name="priority">
+        <option value="高">🚨 高</option>
+        <option value="中" selected>🟡 中</option>
+        <option value="低">🟢 低</option>
+      </select>
+    </label>
+
     <button type="submit" id="submitBtn">追加</button>
 
     <button type="button" id="deleteCategoryBtn" class="hidden" onclick="deleteSelectedCategory()" style="margin-left: 5px; color: red; background: none; border: 1px solid red; padding: 2px 6px; cursor: pointer;">
@@ -122,16 +151,13 @@
     const deleteBtn = document.getElementById('deleteCategoryBtn');
     const form = document.getElementById('todoForm');
 
-    // プルダウンが切り替わったときの処理
     function handleCategoryChange() {
-      // 1. 「新しい分類を追加」が選ばれた時だけ手入力欄を出す
       if (select.value === '__NEW__') {
         newWrapper.classList.remove('hidden');
       } else {
         newWrapper.classList.add('hidden');
       }
 
-      // 2. 既存の具体的な分類（数値のID）が選ばれた時だけ「削除ボタン」を出す
       if (select.value !== '指定なし' && select.value !== '__NEW__') {
         deleteBtn.classList.remove('hidden');
       } else {
@@ -139,10 +165,8 @@
       }
     }
 
-    // 「❌ この分類自体を削除」ボタンが押されたときの処理
     function deleteSelectedCategory() {
       if (confirm('この分類を選択肢から削除しますか？（過去のタスク表示は消えません）')) {
-        // フォームの送信先を「分類非表示のURL」に一時的に書き換えて送信する
         form.action = '/categories/' + select.value + '/hide';
         form.submit();
       }

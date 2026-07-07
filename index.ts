@@ -40,7 +40,8 @@ app.get("/", async (req, res) => {
 // タスクの追加処理
 app.post("/todos", async (req, res) => {
   try {
-    const { title, dueDate, categoryId, newCategory } = req.body;
+    // 【変更】画面から送られてくる priority（重要度）も新しく受け取る
+    const { title, dueDate, categoryId, newCategory, priority } = req.body;
 
     if (!title || title.trim() === "") {
       return res.redirect("/");
@@ -59,12 +60,23 @@ app.post("/todos", async (req, res) => {
       // 「新しい分類を追加」が選ばれ、手入力がある場合はテーブルに新規登録
       const categoryName = newCategory.trim();
 
-      // 過去に同じ名前が非表示であれば復活させ、なければ新規作成する（upsert）
-      const category = await prisma.category.upsert({
+      // 【修正】まずは同じ名前の分類がすでにデータベースにあるか探す
+      let category = await prisma.category.findFirst({
         where: { name: categoryName },
-        update: { isActive: true },
-        create: { name: categoryName },
       });
+
+      if (category) {
+        // すでに存在していたら、非表示になっていたとしても有効（true）に戻す
+        category = await prisma.category.update({
+          where: { id: category.id },
+          data: { isActive: true },
+        });
+      } else {
+        // 完全に新しい名前なら新規作成する
+        category = await prisma.category.create({
+          data: { name: categoryName },
+        });
+      }
       targetCategoryId = category.id;
     } else if (
       categoryId &&
@@ -81,6 +93,7 @@ app.post("/todos", async (req, res) => {
         title: title,
         dueDate: parsedDueDate,
         categoryId: targetCategoryId,
+        priority: priority || "中", // 【新設】重要度を保存（もし空なら"中"にする）
       },
     });
     res.redirect("/");
@@ -90,13 +103,12 @@ app.post("/todos", async (req, res) => {
   }
 });
 
-// 【新設】タスクの「分類のみ」をその場で直接変更・消去する処理
+// タスクの「分類のみ」をその場で直接変更・消去する処理
 app.post("/todos/:id/category", async (req, res) => {
   try {
     const todoId = Number(req.params.id);
     const { categoryId } = req.body;
 
-    // 「指定なし」が選ばれたらnullにし、それ以外は数値に変換して上書き
     const targetCategoryId =
       categoryId === "指定なし" ? null : Number(categoryId);
 
@@ -141,12 +153,11 @@ app.post("/todos/:id/delete", async (req, res) => {
   }
 });
 
-// 【新設】分類を「非表示（論理削除）」にする処理
+// 分類を「非表示（論理削除）」にする処理
 app.post("/categories/:id/hide", async (req, res) => {
   try {
     const categoryId = Number(req.params.id);
 
-    // データベースから完全に消さず、有効フラグをfalseにして隠す
     await prisma.category.update({
       where: { id: categoryId },
       data: { isActive: false },
