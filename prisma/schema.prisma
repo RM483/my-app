@@ -1,19 +1,35 @@
-// This is your Prisma schema file,
-// learn more about it in the docs: https://pris.ly/d/prisma-schema
-
-generator client {
-  provider = "prisma-client"
-  output   = "../generated/prisma"
-}
-
+// データベースへの接続設定
 datasource db {
   provider = "postgresql"
 }
 
-// 【新設】タスクを管理するためのデータモデル
+// TypeScript用のプログラム（Client）を自動生成する設定
+generator client {
+  provider        = "prisma-client-js"
+  previewFeatures = ["driverAdapters"]
+  output          = "../generated/prisma/client" // 出力先をカスタムディレクトリに指定
+}
+
+// タスクを管理するためのデータモデル
 model Todo {
-  id          Int      @id @default(autoincrement()) // 自動で1ずつ増える識別番号
-  title       String                                 // タスクの名前（タイトル）
-  isCompleted Boolean  @default(false)               // 完了フラグ（初期値は未完了のfalse）
-  createdAt   DateTime @default(now())               // タスクが作られた日時（自動記録）
+  id          Int       @id @default(autoincrement()) // 自動で増える識別番号
+  title       String    // タスクの名前
+  isCompleted Boolean   @default(false)               // 完了状態（初期値は未完了）
+  dueDate     DateTime? // 期日（未設定も可）
+  
+  // 【新設】重要度を保存する項目（初期値は"中"）
+  priority    String    @default("中")
+
+  category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
+  categoryId  Int?      // 所属する分類の識別番号
+
+  createdAt   DateTime  @default(now())               // 作成日時
+}
+
+// 分類（カテゴリ）をマスター管理するためのデータモデル
+model Category {
+  id       Int     @id @default(autoincrement()) // 自動で増える分類の識別番号
+  name     String  // 分類名
+  isActive Boolean @default(true)                // 有効状態（初期値は有効）
+  todos    Todo[]  // この分類がセットされているタスクたちのリンク
 }
