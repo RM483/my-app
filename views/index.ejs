@@ -11,61 +11,33 @@
     h1, h2 { color: #2d3748; }
     .hidden { display: none !important; }
     
-    /* 💡 【新設】画面切り替えタブスイッチのスタイリング */
-    .view-switcher {
-      display: flex;
-      background: #e2e8f0;
-      padding: 4px;
-      border-radius: 8px;
-      margin-bottom: 20px;
-    }
-    .switch-btn {
-      flex: 1;
-      padding: 10px;
-      border: none;
-      background: transparent;
-      color: #4a5568;
-      font-weight: bold;
-      font-size: 0.95em;
-      border-radius: 6px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .switch-btn.active {
-      background: white;
-      color: #4c51bf;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-    }
+    /* 画面切り替えタブスイッチ */
+    .view-switcher { display: flex; background: #e2e8f0; padding: 4px; border-radius: 8px; margin-bottom: 20px; }
+    .switch-btn { flex: 1; padding: 10px; border: none; background: transparent; color: #4a5568; font-weight: bold; font-size: 0.95em; border-radius: 6px; cursor: pointer; transition: all 0.2s; }
+    .switch-btn.active { background: white; color: #4c51bf; box-shadow: 0 2px 4px rgba(0,0,0,0.05); }
 
-    /* 💡 【新設】カレンダーコンテナのスタイリング */
-    .calendar-container {
-      background: white;
-      border: 1px solid #e2e8f0;
-      border-radius: 8px;
-      padding: 15px;
-      box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-      margin-bottom: 20px;
-    }
-    /* カレンダー内の文字サイズや高さを微調整 */
-    #calendar {
-      max-height: 500px;
-    }
+    /* カレンダーコンテナのスタイリング */
+    .calendar-container { background: white; border: 1px solid #e2e8f0; border-radius: 8px; padding: 15px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1); margin-bottom: 20px; }
+    #calendar { max-height: 500px; }
     .fc .fc-toolbar-title { font-size: 1.2em; color: #2d3748; font-weight: bold; }
     .fc .fc-button-primary { background-color: #4c51bf; border-color: #4c51bf; }
     .fc .fc-button-primary:hover { background-color: #3b42a7; border-color: #3b42a7; }
     .fc .fc-button-primary:disabled { background-color: #a0aec0; border-color: #a0aec0; }
+    
+    /* 💡 カレンダー内の各タスクイベントの文字や枠線を微調整 */
+    .fc-v-event, .fc-h-event { border: none !important; padding: 2px 4px; border-radius: 4px; font-weight: bold; font-size: 0.85em; cursor: pointer; }
 
     /* 検索ボックスのスタイリング */
     .search-container { margin-bottom: 15px; }
     .search-input { width: 100%; padding: 10px 12px; border: 1px solid #cbd5e0; border-radius: 8px; box-sizing: border-box; font-size: 0.95em; box-shadow: inset 0 1px 3px rgba(0,0,0,0.05); transition: border-color 0.2s; }
     .search-input:focus { border-color: #4c51bf; outline: none; }
 
-    /* カテゴリフィルターボタンの帯（横スクロール対応） */
+    /* カテゴリフィルターボタンの帯 */
     .category-filter-container { display: flex; gap: 8px; overflow-x: auto; padding: 10px 4px; margin-bottom: 15px; white-space: nowrap; -webkit-overflow-scrolling: touch; }
     .category-filter-container::-webkit-scrollbar { height: 5px; }
     .category-filter-container::-webkit-scrollbar-thumb { background: #cbd5e0; border-radius: 4px; }
 
-    /* フィルターボタンの基本スタイル（ONの状態） */
+    /* フィルターボタンスタイル */
     .filter-btn { display: inline-flex; align-items: center; gap: 4px; background: #3182ce; color: white; border: 1px solid #3182ce; padding: 6px 12px; border-radius: 20px; cursor: pointer; font-weight: bold; font-size: 0.85em; transition: all 0.2s; }
     .filter-btn.off { background: #edf2f7; color: #a0aec0; border-color: #e2e8f0; font-weight: normal; }
     .filter-btn.master-btn { background: #4c51bf; border-color: #4c51bf; }
@@ -76,7 +48,7 @@
     .todo-item { padding: 10px 8px; border-bottom: 1px solid #edf2f7; display: flex; align-items: center; gap: 8px; transition: background-color 0.2s; }
     .todo-item:last-child { border-bottom: none; }
 
-    /* アラートハイライト用スタイル（未完了のみ適用） */
+    /* アラートハイライト用スタイル */
     .todo-item.alert-today { background-color: #fffaf0; }
     .todo-item.alert-overdue { background-color: #fff5f5; }
 
@@ -140,7 +112,7 @@
 
     <div class="todo-container">
       <% if (todos.length === 0) { %>
-        <p style="color: gray; text-align: center;">タスクはまだありませんぞよ。</p>
+        <p style="color: gray; text-align: center;">タスクはまだありません。</p>
       <% } %>
       <ul style="list-style: none; padding: 0; margin: 0;">
         <% todos.forEach(todo => { %>
@@ -227,7 +199,7 @@
   </div>
 
   <h2>タスクを追加する</h2>
-  <div id="validationErrorBox" class="client-error-msg hidden">⚠️ タスク名を入力してくださいな。</div>
+  <div id="validationErrorBox" class="client-error-msg hidden">⚠️ タスク名を入力してください。</div>
 
   <button type="button" class="form-toggle-btn" id="toggleModeBtn" onclick="toggleInputMode()">💬 メモ風に自由に入力する</button>
 
@@ -280,9 +252,8 @@
   </div>
 
   <script>
-    let calendar = null; // カレンダーインスタンス保持用
+    let calendar = null;
 
-    // 💡 【新機能】画面の表示切り替えロジック
     function switchView(viewName) {
       const listViewArea = document.getElementById('listViewArea');
       const calendarViewArea = document.getElementById('calendarViewArea');
@@ -299,38 +270,65 @@
         calendarViewArea.classList.remove('hidden');
         listViewBtn.classList.remove('active');
         calendarViewBtn.classList.add('active');
-        
-        // カレンダー画面が表示された瞬間にレイアウトを再計算して描画を綺麗にする
-        if (calendar) {
-          calendar.render();
-        }
+        if (calendar) { calendar.render(); }
       }
     }
 
-    // 💡 【新機能】ブラウザ読み込み完了時に FullCalendar を初期化
     document.addEventListener('DOMContentLoaded', function() {
       const calendarEl = document.getElementById('calendar');
       
+      // 💡 サーバーサイドの todos 配列から FullCalendar 用のイベント配列を動的に生成
+      const calendarEvents = [
+        <% todos.forEach(todo => { %>
+          <% if (todo.dueDate) { 
+               const d = new Date(todo.dueDate);
+               const dateStr = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+               
+               // 重要度や完了状態に応じた色の判定
+               let color = '#a0aec0'; // デフォルト：グレー（完了タスクなど）
+               if (!todo.isCompleted) {
+                 if (todo.priority === '高') color = '#e53e3e';      // 🚨 赤
+                 else if (todo.priority === '中') color = '#dd6b20'; // 🟡 オレンジ
+                 else if (todo.priority === '低') color = '#38a169'; // 🟢 緑
+               }
+               
+               // 分類名の取得
+               const catObj = categories.find(c => c.id === todo.categoryId);
+               const catName = catObj ? catObj.name : '分類なし';
+          %>
+            {
+              id: '<%= todo.id %>',
+              title: '<%= todo.title.replace(/'/g, "\\'") %>',
+              start: '<%= dateStr %>',
+              backgroundColor: '<%= color %>',
+              // 💡 ryotoさんのご提案通り、重要度、完了状態、分類名をカスタムデータとして丸ごと持たせる
+              extendedProps: {
+                priority: '<%= todo.priority %>',
+                isCompleted: <%= todo.isCompleted %>,
+                categoryName: '<%= catName.replace(/'/g, "\\'") %>'
+              }
+            },
+          <% } %>
+        <% }) %>
+      ];
+
       calendar = new FullCalendar.Calendar(calendarEl, {
-        initialView: 'dayGridMonth',     // 最初は「月」表示
-        initialDate: '2026-07-08',       // 基準日である2026年7月8日を開く
-        locale: 'ja',                    // 日本語化
+        initialView: 'dayGridMonth',
+        initialDate: '2026-07-08',
+        locale: 'ja',
         headerToolbar: {
           left: 'prev,next today',
           center: 'title',
           right: 'dayGridMonth'
         },
-        buttonText: {
-          today: '今日',
-          month: '月'
-        },
-        events: [] // ✨ 次のステップで、ここにデータベースのタスクを自動連携させます！
+        buttonText: { today: '今日', month: '月' },
+        events: calendarEvents // 💡 組み立てた全データ配列をここに流し込む！
       });
 
       calendar.render();
     });
 
-    // 以下、既存のロジック（バリデーション、検索、フィルターなど）
+    // 以下、既存のロジック
     document.getElementById('todoForm').addEventListener('submit', function(e) {
       const errorBox = document.getElementById('validationErrorBox');
       let isFormEmpty = false;
