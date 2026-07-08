@@ -8,6 +8,25 @@
     h1, h2 { color: #2d3748; }
     .hidden { display: none !important; }
     
+    /* 💡 検索ボックスのスタイリング */
+    .search-container {
+      margin-bottom: 15px;
+    }
+    .search-input {
+      width: 100%;
+      padding: 10px 12px;
+      border: 1px solid #cbd5e0;
+      border-radius: 8px;
+      box-sizing: border-box;
+      font-size: 0.95em;
+      box-shadow: inset 0 1px 3px rgba(0,0,0,0.05);
+      transition: border-color 0.2s;
+    }
+    .search-input:focus {
+      border-color: #4c51bf;
+      outline: none;
+    }
+
     /* カテゴリフィルターボタンの帯（横スクロール対応） */
     .category-filter-container {
       display: flex;
@@ -63,8 +82,13 @@
       display: flex;
       align-items: center;
       gap: 8px;
+      transition: background-color 0.2s;
     }
     .todo-item:last-child { border-bottom: none; }
+
+    /* 💡 アラートハイライト用スタイル（未完了のみ適用） */
+    .todo-item.alert-today { background-color: #fffaf0; } /* 今日はほんのりオレンジ */
+    .todo-item.alert-overdue { background-color: #fff5f5; } /* 期限切れはほんのり薄赤 */
 
     /* 各種インライン編集用スタイリング */
     .inline-select { border: 1px solid #e2e8f0; border-radius: 4px; background: #f7fafc; font-weight: bold; color: #2b6cb0; cursor: pointer; font-size: 0.9em; padding: 4px; }
@@ -79,6 +103,10 @@
     .inline-input-title.completed { color: gray; text-decoration: line-through; font-weight: normal; }
 
     .inline-date { border: 1px solid #e2e8f0; border-radius: 4px; padding: 4px; font-size: 0.85em; color: #4a5568; background: #f7fafc; }
+    
+    /* 💡 期日のアラート文字用スタイル */
+    .date-text-today { color: #dd6b20; font-weight: bold; }
+    .date-text-overdue { color: #e53e3e; font-weight: bold; }
 
     /* 入力部分の装飾 */
     .form-toggle-btn { background: #4c51bf; color: white; border: none; padding: 8px 12px; border-radius: 4px; cursor: pointer; margin-bottom: 10px; font-weight: bold; }
@@ -88,14 +116,11 @@
     .form-group label { display: block; font-weight: bold; margin-bottom: 4px; font-size: 0.9em; }
     .standard-input { width: 100%; padding: 8px; border: 1px solid #cbd5e0; border-radius: 4px; box-sizing: border-box; }
     
-    /* 💡 ボタン配置エリア用スタイル */
     .form-actions { display: flex; gap: 10px; margin-top: 15px; }
     .submit-btn { flex: 2; background: #48bb78; color: white; border: none; padding: 10px; border-radius: 4px; font-weight: bold; cursor: pointer; }
-    /* 💡 控えめなリセットボタンのスタイル */
     .reset-btn { flex: 1; background: #fff; color: #718096; border: 1px solid #cbd5e0; padding: 10px; border-radius: 4px; font-weight: bold; cursor: pointer; transition: all 0.2s; }
     .reset-btn:hover { background: #f7fafc; color: #4a5568; border-color: #a0aec0; }
     
-    /* 💡 ブラウザ上でのエラーメッセージ用スタイル */
     .client-error-msg { color: #e53e3e; font-weight: bold; background-color: #fff5f5; border: 1px solid #fed7d7; padding: 10px; border-radius: 4px; margin-bottom: 12px; display: flex; align-items: center; gap: 6px; }
 
     /* 完了/未完了トグルボタン */
@@ -106,6 +131,10 @@
 </head>
 <body>
   <h1>タスク一覧</h1>
+
+  <div class="search-container">
+    <input type="text" id="taskSearchInput" class="search-input" placeholder="🔍 タスク名でキーワード検索... (入力すると一瞬で絞り込みます)" oninput="applyFilters()">
+  </div>
   
   <% if (categories.length > 0 || todos.some(t => !t.categoryId)) { %>
     <div class="category-filter-container">
@@ -131,7 +160,38 @@
     <% } %>
     <ul style="list-style: none; padding: 0; margin: 0;">
       <% todos.forEach(todo => { %>
-        <li class="todo-item" data-cat="<%= todo.categoryId ? todo.categoryId : 'none' %>">
+        
+        <% 
+          let alertClass = "";
+          let dateTextClass = "";
+          let prefixText = "";
+          let dateString = "";
+
+          if (todo.dueDate) {
+            const d = new Date(todo.dueDate);
+            dateString = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
+            
+            // 2026年7月8日のタイムスタンプ（時間リセット）
+            const today = new Date('2026-07-08');
+            today.setHours(0,0,0,0);
+            const taskDate = new Date(todo.dueDate);
+            taskDate.setHours(0,0,0,0);
+
+            if (!todo.isCompleted) {
+              if (taskDate.getTime() === today.getTime()) {
+                alertClass = "alert-today";
+                dateTextClass = "date-text-today";
+                prefixText = "📅 今日";
+              } else if (taskDate.getTime() < today.getTime()) {
+                alertClass = "alert-overdue";
+                dateTextClass = "date-text-overdue";
+                prefixText = "🚨 期限切れ";
+              }
+            }
+          }
+        %>
+
+        <li class="todo-item <%= alertClass %>" data-cat="<%= todo.categoryId ? todo.categoryId : 'none' %>" data-title="<%= todo.title.toLowerCase() %>">
           
           <form action="/todos/<%= todo.id %>/toggle" method="POST" style="display: flex; align-items: center;">
             <button type="submit" class="toggle-check-btn <%= todo.isCompleted ? 'completed' : '' %>" title="<%= todo.isCompleted ? '未完了に戻す' : '完了にする' %>">✓</button>
@@ -170,15 +230,11 @@
                    <%= todo.isCompleted ? 'disabled' : '' %>>
           </form>
 
-          <form action="/todos/<%= todo.id %>/update" method="POST" style="display: flex; align-items: center;">
-            <% 
-              let dateString = "";
-              if (todo.dueDate) {
-                const d = new Date(todo.dueDate);
-                dateString = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0') + '-' + String(d.getDate()).padStart(2, '0');
-              }
-            %>
-            <input type="date" name="dueDate" class="inline-date" value="<%= dateString %>" onchange="this.form.submit()">
+          <form action="/todos/<%= todo.id %>/update" method="POST" style="display: flex; align-items: center; gap: 4px;">
+            <% if (prefixText) { %>
+              <span class="<%= dateTextClass %>" style="font-size: 0.8em; white-space: nowrap;"><%= prefixText %></span>
+            <% } %>
+            <input type="date" name="dueDate" class="inline-date <%= todo.isCompleted ? 'completed' : '' %>" value="<%= dateString %>" onchange="this.form.submit()">
           </form>
 
           <form action="/todos/<%= todo.id %>/delete" method="POST" style="display: flex; align-items: center; margin-left: 4px;">
@@ -261,17 +317,16 @@
   <p style="margin-top: 20px; text-align: center;"><a href="/" style="color: #4c51bf; text-decoration: none; font-weight: bold;">🔄 画面を更新する</a></p>
 
   <script>
-    // 💡 【新機能】送信ボタンが押されたときのバリデーション処理
+    // 送信ボタンが押されたときのバリデーション処理
     document.getElementById('todoForm').addEventListener('submit', function(e) {
       const errorBox = document.getElementById('validationErrorBox');
       let isFormEmpty = false;
 
-      // 現在の入力モードに応じて判定対象を切り替える
       if (currentMode === 'simple') {
         if (titleSimple.value.trim() === "") {
           isFormEmpty = true;
         } else {
-          titleDetail.value = titleSimple.value; // 値を同期
+          titleDetail.value = titleSimple.value;
         }
       } else {
         if (titleDetail.value.trim() === "") {
@@ -279,34 +334,26 @@
         }
       }
 
-      // もし空文字だったら送信を止めて、その場にエラーメッセージを表示
       if (isFormEmpty) {
-        e.preventDefault(); // 🚨 サーバーへの送信をストップ！
-        errorBox.classList.remove('hidden'); // エラーを表示
-        window.scrollTo({ top: errorBox.offsetTop - 20, behavior: 'smooth' }); // エラー位置へ滑らかスクロール
+        e.preventDefault();
+        errorBox.classList.remove('hidden');
+        window.scrollTo({ top: errorBox.offsetTop - 20, behavior: 'smooth' });
       } else {
-        errorBox.classList.add('hidden'); // エラーを隠す
+        errorBox.classList.add('hidden');
       }
     });
 
-    // 💡 【新機能】全ての入力状態を完全に初期状態に戻す関数
+    // 全ての入力状態を完全に初期状態に戻す関数
     function resetWholeForm() {
-      // エラーメッセージが出ていたら隠す
       document.getElementById('validationErrorBox').classList.add('hidden');
-
-      // 文字入力欄をクリア
       titleSimple.value = "";
       titleDetail.value = "";
       document.getElementById('dueDateField').value = "";
       document.getElementById('newCategoryInput').value = "";
-
-      // プルダウンを初期位置に戻す
       document.getElementById('prioritySelect').value = "中";
       
       const catSelect = document.getElementById('categorySelect');
       catSelect.value = "指定なし";
-      
-      // カテゴリ変更に伴う補助要素のON/OFFを再計算
       handleCategoryChange();
     }
 
@@ -377,35 +424,52 @@
       applyFilters();
     }
 
-    // 実際にタスクを表示・非表示にするロジック
+    // 💡 【超強化】カテゴリフィルター ＆ キーワード検索のハイブリッドリアルタイムロジック
     function applyFilters() {
       const masterBtn = document.getElementById('masterFilterBtn');
       const categoryButtons = document.querySelectorAll('.category-btn');
       const todoItems = document.querySelectorAll('.todo-item');
+      
+      // 検索ワードを取得して小文字に変換
+      const searchWord = document.getElementById('taskSearchInput').value.toLowerCase().trim();
 
-      if (!masterBtn) return;
-
+      // 1. カテゴリ側の状態を収集
       const activeCategoryIds = [];
-      categoryButtons.forEach(btn => {
-        if (!btn.classList.contains('off')) {
-          activeCategoryIds.push(btn.getAttribute('data-category-id'));
-        }
-      });
+      if (categoryButtons.length > 0) {
+        categoryButtons.forEach(btn => {
+          if (!btn.classList.contains('off')) {
+            activeCategoryIds.push(btn.getAttribute('data-category-id'));
+          }
+        });
 
-      if (activeCategoryIds.length === categoryButtons.length) {
-        masterBtn.classList.remove('off');
-        masterBtn.querySelector('.icon').innerText = '📄';
-      } else if (activeCategoryIds.length === 0) {
-        masterBtn.classList.add('off');
-        masterBtn.querySelector('.icon').innerText = '❌';
-      } else {
-        masterBtn.classList.add('off');
-        masterBtn.querySelector('.icon').innerText = '➖';
+        // マスターボタンの見た目を調整
+        if (masterBtn) {
+          if (activeCategoryIds.length === categoryButtons.length) {
+            masterBtn.classList.remove('off');
+            masterBtn.querySelector('.icon').innerText = '📄';
+          } else if (activeCategoryIds.length === 0) {
+            masterBtn.classList.add('off');
+            masterBtn.querySelector('.icon').innerText = '❌';
+          } else {
+            masterBtn.classList.add('off');
+            masterBtn.querySelector('.icon').innerText = '➖';
+          }
+        }
       }
 
+      // 2. 各タスクをループして「カテゴリ判定」＆「検索ワード判定」の掛け算で表示状態を決める
       todoItems.forEach(item => {
         const itemCatId = item.getAttribute('data-cat');
-        if (activeCategoryIds.includes(itemCatId)) {
+        const itemTitle = item.getAttribute('data-title');
+
+        // 条件A: 有効なカテゴリに属しているか（カテゴリボタンが無い場合は常に真）
+        const isCategoryMatch = categoryButtons.length === 0 || activeCategoryIds.includes(itemCatId);
+        
+        // 条件B: 検索キーワードが含まれているか（空文字の場合は常に真）
+        const isSearchMatch = searchWord === "" || itemTitle.includes(searchWord);
+
+        // 両方の条件を満たした場合のみ表示する！
+        if (isCategoryMatch && isSearchMatch) {
           item.classList.remove('hidden');
         } else {
           item.classList.add('hidden');
