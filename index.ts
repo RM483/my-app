@@ -7,7 +7,6 @@ import { PrismaClient } from "./generated/prisma/client";
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
 const prisma = new PrismaClient({ adapter, log: ["query"] });
-
 const app = express();
 const PORT = process.env.PORT || 8888;
 
@@ -15,28 +14,57 @@ app.set("view engine", "ejs");
 app.set("views", "./views");
 app.use(express.urlencoded({ extended: true }));
 
-// 一覧表示：タスク一覧と有効な分類一覧を取得して画面に渡す
+// 💡 1. タスク一覧の取得（自動並び替え ＆ カテゴリ維持ロジック付き）
 app.get("/", async (req, res) => {
   try {
-    // URLのパラメータからエラーの種類（あれば）を取得
     const errorType = req.query.error as string | undefined;
 
-    // タスク一覧を取得
+    // データベースからすべてのタスクを取得
     const todos = await prisma.todo.findMany({
       include: { category: true },
-      orderBy: { id: "asc" },
     });
 
-    // 有効な分類一覧を取得
+    // ryotoさん特製：自動並び替えロジック
+    const sortedTodos = todos.sort((a, b) => {
+      if (a.isCompleted !== b.isCompleted) {
+        return a.isCompleted ? 1 : -1;
+      }
+      if (a.dueDate && b.dueDate) {
+        if (a.dueDate.getTime() !== b.dueDate.getTime()) {
+          return a.dueDate.getTime() - b.dueDate.getTime();
+        }
+      } else if (a.dueDate) {
+        return -1;
+      } else if (b.dueDate) {
+        return 1;
+      }
+      const priorityMap: { [key: string]: number } = { 高: 1, 中: 2, 低: 3 };
+      const priorityA = priorityMap[a.priority] || 2;
+      const priorityB = priorityMap[b.priority] || 2;
+      return priorityA - priorityB;
+    });
+
+    // ① 現在有効（isActive: true）なカテゴリを取得
     const activeCategories = await prisma.category.findMany({
       where: { isActive: true },
       orderBy: { id: "asc" },
     });
 
-    // 画面に errorType も一緒に渡す
+    // ② 【強化ポイント】非表示（isActive: false）だが、まだタスクが残っているカテゴリを取得
+    const orphanedCategories = await prisma.category.findMany({
+      where: {
+        isActive: false,
+        todos: { some: {} }, // 1つでもtodoが存在するもの
+      },
+      orderBy: { id: "asc" },
+    });
+
+    // ①と②を合体させて、画面上のボタンやプルダウンに表示する「すべての対象カテゴリ」を作る
+    const allDisplayCategories = [...activeCategories, ...orphanedCategories];
+
     res.render("index", {
-      todos,
-      categories: activeCategories,
+      todos: sortedTodos,
+      categories: allDisplayCategories,
       error: errorType,
     });
   } catch (error) {
@@ -45,40 +73,37 @@ app.get("/", async (req, res) => {
   }
 });
 
-// タスクの追加処理
+// 💡 2. 新しいタスクの追加（重複防止ロジック付き）
 app.post("/todos", async (req, res) => {
   try {
-    const { title, dueDate, categoryId, newCategory, priority } = req.body;
+    const { title, dueDate, categoryId, newCategory, priority, titleSimple } =
+      req.body;
 
-    if (!title || title.trim() === "") {
+    const rawTitle = title || titleSimple;
+    if (!rawTitle || rawTitle.trim() === "") {
       return res.redirect("/");
     }
 
-    const cleanedTitle = title.trim();
+    const cleanedTitle = rawTitle.trim();
 
-    // 期日のデータ整形
     let parsedDueDate: Date | null = null;
     if (dueDate && dueDate.trim() !== "") {
-      // 日時が被っているかを正確に判定するため、時間のズレをなくした「日付のみ」の状態にする
       parsedDueDate = new Date(dueDate);
       parsedDueDate.setHours(0, 0, 0, 0);
     }
 
-    // 🚨【新設】タスクの重複チェックロジック
-    // 「タイトルが一致」かつ「期日が一致（両方なし、または同じ日付）」のものを探す
+    // 重複防止チェック
     const existingTodo = await prisma.todo.findFirst({
       where: {
         title: cleanedTitle,
-        dueDate: parsedDueDate, // null 同士、または同じ日付オブジェクト同士で比較
+        dueDate: parsedDueDate,
       },
     });
 
-    // もし既に見つかった場合は、URLにエラーをつけてトップに戻す（追加しない）
     if (existingTodo) {
       return res.redirect("/?error=duplicate");
     }
 
-    // 分類IDの決定ロジック
     let targetCategoryId: number | null = null;
 
     if (categoryId === "__NEW__" && newCategory && newCategory.trim() !== "") {
@@ -107,7 +132,6 @@ app.post("/todos", async (req, res) => {
       targetCategoryId = Number(categoryId);
     }
 
-    // 重複がなければタスクをデータベースに保存
     await prisma.todo.create({
       data: {
         title: cleanedTitle,
@@ -123,12 +147,66 @@ app.post("/todos", async (req, res) => {
   }
 });
 
-// タスクの「分類のみ」をその場で直接変更・消去する処理
+// 💡 3. タスク名・期日・重要度のその場更新ルート（重複チェック付き強化版）
+app.post("/todos/:id/update", async (req, res) => {
+  try {
+    const todoId = Number(req.params.id);
+    const { title, dueDate, priority } = req.body;
+
+    const currentTodo = await prisma.todo.findUnique({
+      where: { id: todoId },
+    });
+    if (!currentTodo) return res.status(404).send("タスクが見つかりません");
+
+    const finalTitle = title !== undefined ? title.trim() : currentTodo.title;
+
+    let finalDueDate: Date | null = currentTodo.dueDate;
+    if (dueDate !== undefined) {
+      if (dueDate.trim() === "") {
+        finalDueDate = null;
+      } else {
+        finalDueDate = new Date(dueDate);
+        finalDueDate.setHours(0, 0, 0, 0);
+      }
+    }
+
+    if (finalTitle === "") return res.redirect("/");
+
+    // 重複チェック
+    const duplicateTodo = await prisma.todo.findFirst({
+      where: {
+        id: { not: todoId },
+        title: finalTitle,
+        dueDate: finalDueDate,
+      },
+    });
+
+    if (duplicateTodo) {
+      return res.redirect("/?error=duplicate");
+    }
+
+    const updateData: any = {};
+    if (title !== undefined) updateData.title = finalTitle;
+    if (priority !== undefined) updateData.priority = priority;
+    if (dueDate !== undefined) updateData.dueDate = finalDueDate;
+
+    await prisma.todo.update({
+      where: { id: todoId },
+      data: updateData,
+    });
+
+    res.redirect("/");
+  } catch (error) {
+    console.error("タスクの直接更新に失敗したぞよ:", error);
+    res.status(500).send("エラーが発生しました");
+  }
+});
+
+// 💡 4. タスクのカテゴリ（分類）更新
 app.post("/todos/:id/category", async (req, res) => {
   try {
     const todoId = Number(req.params.id);
     const { categoryId } = req.body;
-
     const targetCategoryId =
       categoryId === "指定なし" ? null : Number(categoryId);
 
@@ -143,7 +221,50 @@ app.post("/todos/:id/category", async (req, res) => {
   }
 });
 
-// タスクの状態更新処理（完了・未完了の切り替え）
+// 💡 4-2. ★新機能★ タスク一覧のプルダウンから「新しく分類を作ってその場でセット」するルート
+app.post("/todos/:id/category/create", async (req, res) => {
+  try {
+    const todoId = Number(req.params.id);
+    const { newCategoryName } = req.body;
+
+    if (!newCategoryName || newCategoryName.trim() === "") {
+      return res.redirect("/");
+    }
+
+    const categoryName = newCategoryName.trim();
+
+    // 既に存在するかチェック
+    let category = await prisma.category.findFirst({
+      where: { name: categoryName },
+    });
+
+    if (category) {
+      // 存在していたら、もし非表示なら有効に戻す
+      category = await prisma.category.update({
+        where: { id: category.id },
+        data: { isActive: true },
+      });
+    } else {
+      // 全く新しい名前なら新規作成
+      category = await prisma.category.create({
+        data: { name: categoryName },
+      });
+    }
+
+    // 対象のタスクにこのカテゴリをセット
+    await prisma.todo.update({
+      where: { id: todoId },
+      data: { categoryId: category.id },
+    });
+
+    res.redirect("/");
+  } catch (error) {
+    console.error("タスク一覧からのカテゴリ新規追加に失敗したぞよ:", error);
+    res.status(500).send("エラーが発生しました");
+  }
+});
+
+// 💡 5. タスクの完了 / 未完了の切り替え
 app.post("/todos/:id/toggle", async (req, res) => {
   try {
     const todoId = Number(req.params.id);
@@ -161,11 +282,11 @@ app.post("/todos/:id/toggle", async (req, res) => {
   }
 });
 
-// タスクの削除処理
+// 💡 6. タスクの削除
 app.post("/todos/:id/delete", async (req, res) => {
   try {
-    const todoId = Number(req.params.id);
-    await prisma.todo.delete({ where: { id: todoId } });
+    const poolTodoId = Number(req.params.id);
+    await prisma.todo.delete({ where: { id: poolTodoId } });
     res.redirect("/");
   } catch (error) {
     console.error("タスクの削除に失敗したぞよ:", error);
@@ -173,11 +294,10 @@ app.post("/todos/:id/delete", async (req, res) => {
   }
 });
 
-// 分類を「非表示（論理削除）」にする処理
+// 💡 7. カテゴリの非表示（論理削除）
 app.post("/categories/:id/hide", async (req, res) => {
   try {
     const categoryId = Number(req.params.id);
-
     await prisma.category.update({
       where: { id: categoryId },
       data: { isActive: false },
