@@ -10,6 +10,10 @@
   <link href="/css/style.css" rel="stylesheet" />
 </head>
 <body>
+  <% const safeFormValues = typeof formValues !== 'undefined' ? formValues : {}; %>
+  <% const safeErrorMessage = typeof errorMessage !== 'undefined' ? errorMessage : null; %>
+  <% const safeDuplicateTodoId = typeof duplicateTodoId !== 'undefined' ? duplicateTodoId : null; %>
+  <% const safeErrorType = typeof error !== 'undefined' ? error : null; %>
   <h1>タスク管理システム</h1>
 
   <div class="view-switcher">
@@ -35,6 +39,13 @@
         <button type="button" class="filter-btn category-btn" data-category-id="none" onclick="toggleCategoryFilter(this)">
           <span class="check-mark">✓</span> [分類なし]
         </button>
+      </div>
+    <% } %>
+
+    <% if (safeErrorType === 'listDuplicate' || safeErrorType === 'listEmptyTitle') { %>
+      <div class="client-error-msg" style="margin-bottom: 12px;">
+        <span>⚠️</span>
+        <span><%= safeErrorMessage || '入力内容に問題があります。' %></span>
       </div>
     <% } %>
 
@@ -101,14 +112,14 @@
             </div>
 
             <form action="/todos/<%= todo.id %>/update" method="POST" style="flex-grow: 1; display: flex; align-items: center;">
-              <input type="text" name="title" class="inline-input-title <%= todo.isCompleted ? 'completed' : '' %>" value="<%= todo.title %>" onchange="this.form.submit()" <%= todo.isCompleted ? 'disabled' : '' %>>
+              <input type="text" name="title" class="inline-input-title <%= todo.isCompleted ? 'completed' : '' %>" value="<%= safeFormValues && safeFormValues['todo-' + todo.id + '-title'] !== undefined ? safeFormValues['todo-' + todo.id + '-title'] : todo.title %>" onchange="this.form.submit()" <%= todo.isCompleted ? 'disabled' : '' %>>
             </form>
 
             <form action="/todos/<%= todo.id %>/update" method="POST" style="display: flex; align-items: center; gap: 4px;">
               <% if (prefixText) { %>
                 <span class="<%= dateTextClass %>" style="font-size: 0.8em; white-space: nowrap;"><%= prefixText %></span>
               <% } %>
-              <input type="date" name="dueDate" class="inline-date <%= todo.isCompleted ? 'completed' : '' %>" value="<%= dateString %>" onchange="this.form.submit()">
+              <input type="date" name="dueDate" class="inline-date <%= todo.isCompleted ? 'completed' : '' %>" value="<%= safeFormValues && safeFormValues['todo-' + todo.id + '-dueDate'] !== undefined ? safeFormValues['todo-' + todo.id + '-dueDate'] : dateString %>" onchange="this.form.submit()">
             </form>
 
             <form action="/todos/<%= todo.id %>/delete" method="POST" style="display: flex; align-items: center; margin-left: 4px;">
@@ -124,49 +135,63 @@
     <div class="calendar-container">
       <div id="calendar"></div>
     </div>
+
+    <div id="dayScheduleOverlay" class="day-schedule-overlay hidden" aria-hidden="true">
+      <div class="day-schedule-panel" role="dialog" aria-modal="true">
+        <button type="button" id="closeDayScheduleBtn" class="day-schedule-close" aria-label="閉じる">×</button>
+        <div class="day-schedule-header">
+          <h3 id="scheduleDateTitle">日付のスケジュール</h3>
+          <p id="scheduleDateSubtitle">30分刻みでその日の予定を表示します</p>
+        </div>
+        <div id="scheduleTimeline" class="schedule-timeline"></div>
+      </div>
+    </div>
   </div>
 
   <h2>タスクを追加する</h2>
-  <div id="validationErrorBox" class="client-error-msg hidden">⚠️ タスク名を入力してくださいな。</div>
+  <div id="validationErrorBox" class="client-error-msg <%= (safeErrorType === 'emptyTitle' || safeErrorType === 'duplicate') && safeErrorMessage ? '' : 'hidden' %>">
+    <span>⚠️</span>
+    <span><%= safeErrorMessage || 'タスク名を入力してくださいな。' %></span>
+  </div>
 
   <button type="button" class="form-toggle-btn" id="toggleModeBtn" onclick="toggleInputMode()">💬 メモ風に自由に入力する</button>
 
   <div class="input-box">
     <form id="todoForm" action="/todos" method="POST">
-      <div id="simpleInputMode" class="hidden">
-        <textarea name="titleSimple" id="titleSimple" class="big-textarea" placeholder="ここにタスクを自由に書きなぐってください"></textarea>
+      <div id="simpleInputMode" class="<%= (safeFormValues && safeFormValues.currentMode === 'simple') ? '' : 'hidden' %>">
+        <textarea name="titleSimple" id="titleSimple" class="big-textarea" placeholder="ここにタスクを自由に書きなぐってください"><%= safeFormValues && safeFormValues.titleSimple ? safeFormValues.titleSimple : '' %></textarea>
       </div>
 
-      <div id="detailInputMode">
+      <div id="detailInputMode" class="<%= (safeFormValues && safeFormValues.currentMode === 'simple') ? 'hidden' : '' %>">
         <div class="form-group">
           <label>タスク名</label>
-          <input type="text" name="title" id="titleDetail" class="standard-input" placeholder="新しいタスクを入力してください">
+          <input type="text" name="title" id="titleDetail" class="standard-input" placeholder="新しいタスクを入力してください" value="<%= safeFormValues && safeFormValues.title ? safeFormValues.title : '' %>">
         </div>
         <div style="display: flex; gap: 10px;">
           <div class="form-group" style="flex: 1;">
             <label>期日</label>
-            <input type="date" name="dueDate" id="dueDateField" class="standard-input">
+            <input type="date" name="dueDate" id="dueDateField" class="standard-input" value="<%= safeFormValues && safeFormValues.dueDate ? safeFormValues.dueDate : '' %>">
           </div>
           <div class="form-group" style="flex: 1;">
             <label>重要度</label>
             <select name="priority" id="prioritySelect" class="standard-input">
-              <option value="高">🚨 高</option>
-              <option value="中" selected>🟡 中</option>
-              <option value="低">🟢 低</option>
+              <option value="高" <%= safeFormValues && safeFormValues.priority === '高' ? 'selected' : '' %>>🚨 高</option>
+              <option value="中" <%= (!safeFormValues || safeFormValues.priority === '中' || !safeFormValues.priority) ? 'selected' : '' %>>🟡 中</option>
+              <option value="低" <%= safeFormValues && safeFormValues.priority === '低' ? 'selected' : '' %>>🟢 低</option>
             </select>
           </div>
         </div>
         <div class="form-group">
           <label>分類（カテゴリ）</label>
           <select name="categoryId" id="categorySelect" class="standard-input" onchange="handleCategoryChange()">
-            <option value="指定なし">指定なし</option>
+            <option value="指定なし" <%= safeFormValues && safeFormValues.categoryId === '指定なし' ? 'selected' : '' %>>指定なし</option>
             <% categories.forEach(cat => { %>
-              <option value="<%= cat.id %>"><%= cat.name %></option>
+              <option value="<%= cat.id %>" <%= safeFormValues && String(safeFormValues.categoryId) === String(cat.id) ? 'selected' : '' %>><%= cat.name %></option>
             <% }) %>
-            <option value="__NEW__">（＋ 新しい分類を追加）</option>
+            <option value="__NEW__" <%= safeFormValues && safeFormValues.categoryId === '__NEW__' ? 'selected' : '' %>>（＋ 新しい分類を追加）</option>
           </select>
           <span id="newCategoryWrapper" class="hidden" style="display: block; margin-top: 5px;">
-            <input type="text" name="newCategory" id="newCategoryInput" class="standard-input" placeholder="新しい分類名を入力">
+            <input type="text" name="newCategory" id="newCategoryInput" class="standard-input" placeholder="新しい分類名を入力" value="<%= safeFormValues && safeFormValues.newCategory ? safeFormValues.newCategory : '' %>">
           </span>
         </div>
       </div>
@@ -185,6 +210,15 @@
     document.addEventListener('DOMContentLoaded', function() {
       const calendarEl = document.getElementById('calendar');
       
+      window.scheduleTasks = <%- JSON.stringify(todos.map(todo => ({
+        id: todo.id,
+        title: todo.title,
+        dueDate: todo.dueDate ? todo.dueDate.toISOString() : null,
+        priority: todo.priority,
+        isCompleted: todo.isCompleted,
+        categoryName: categories.find(c => c.id === todo.categoryId)?.name || '分類なし'
+      }))) %>;
+
       const calendarEvents = [
         <% todos.forEach(todo => { %>
           <% if (todo.dueDate) { 
@@ -220,13 +254,20 @@
         initialView: 'dayGridMonth',
         initialDate: '2026-07-08',
         locale: 'ja',
+        height: 'auto',
         headerToolbar: {
           left: 'prev,next today',
           center: 'title',
           right: 'dayGridMonth'
         },
         buttonText: { today: '今日', month: '月' },
-        events: calendarEvents
+        events: calendarEvents,
+        dateClick: function(info) {
+          openDaySchedule(info.dateStr);
+        },
+        eventClick: function(info) {
+          openDaySchedule(info.event.startStr.slice(0, 10));
+        }
       });
 
       calendar.render();
