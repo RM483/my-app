@@ -28,7 +28,110 @@ function switchView(viewName) {
 }
 
 // 💡 【機能維持】バリデーションロジック
+function formatDateLabel(dateStr) {
+  const date = new Date(`${dateStr}T00:00:00`);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}/${month}/${day}`;
+}
+
+function formatTimeLabel(index) {
+  const hour = String(Math.floor(index / 2)).padStart(2, "0");
+  const minute = index % 2 === 0 ? "00" : "30";
+  return `${hour}:${minute}`;
+}
+
+function openDaySchedule(dateStr) {
+  const overlay = document.getElementById("dayScheduleOverlay");
+  const title = document.getElementById("scheduleDateTitle");
+  const subtitle = document.getElementById("scheduleDateSubtitle");
+  const timeline = document.getElementById("scheduleTimeline");
+
+  if (!overlay || !title || !subtitle || !timeline) return;
+
+  const selectedTasks = (window.scheduleTasks || [])
+    .filter((todo) => todo.dueDate && todo.dueDate.slice(0, 10) === dateStr)
+    .sort((a, b) => {
+      const priorityOrder = { 高: 0, 中: 1, 低: 2 };
+      const priorityDiff =
+        (priorityOrder[a.priority] ?? 1) - (priorityOrder[b.priority] ?? 1);
+      if (priorityDiff !== 0) return priorityDiff;
+      return a.title.localeCompare(b.title, "ja");
+    });
+
+  title.textContent = `${formatDateLabel(dateStr)} のスケジュール`;
+  subtitle.textContent =
+    selectedTasks.length > 0
+      ? `${selectedTasks.length}件の予定があります`
+      : "予定はまだありません";
+
+  const slots = Array.from({ length: 48 }, (_, index) => ({
+    time: formatTimeLabel(index),
+    items: [],
+  }));
+
+  selectedTasks.forEach((todo, index) => {
+    const slotIndex = index % 48;
+    slots[slotIndex].items.push(todo);
+  });
+
+  timeline.innerHTML = slots
+    .map((slot) => {
+      if (slot.items.length === 0) {
+        return `
+          <div class="schedule-slot">
+            <div class="schedule-time">${slot.time}</div>
+            <div class="schedule-item-list">
+              <div class="schedule-item-empty">予定なし</div>
+            </div>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="schedule-slot">
+          <div class="schedule-time">${slot.time}</div>
+          <div class="schedule-item-list">
+            ${slot.items
+              .map((todo) => {
+                const priorityClass =
+                  todo.priority === "高"
+                    ? "priority-high"
+                    : todo.priority === "低"
+                      ? "priority-low"
+                      : "priority-normal";
+                const doneClass = todo.isCompleted ? "completed" : "";
+                return `
+                  <div class="schedule-item ${priorityClass} ${doneClass}">
+                    <div class="schedule-item-title">${todo.title}</div>
+                    <div class="schedule-item-meta">${todo.categoryName || "分類なし"}</div>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+}
+
+function closeDaySchedule() {
+  const overlay = document.getElementById("dayScheduleOverlay");
+  if (overlay) {
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+  }
+}
+
 window.addEventListener("DOMContentLoaded", () => {
+  switchView("list");
+  handleCategoryChange();
+
   const todoForm = document.getElementById("todoForm");
   if (todoForm) {
     todoForm.addEventListener("submit", function (e) {
@@ -56,6 +159,19 @@ window.addEventListener("DOMContentLoaded", () => {
         errorBox.classList.add("hidden");
       }
     });
+  }
+
+  const overlay = document.getElementById("dayScheduleOverlay");
+  const closeBtn = document.getElementById("closeDayScheduleBtn");
+  if (overlay) {
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) {
+        closeDaySchedule();
+      }
+    });
+  }
+  if (closeBtn) {
+    closeBtn.addEventListener("click", closeDaySchedule);
   }
 });
 
