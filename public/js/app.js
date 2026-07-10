@@ -3,15 +3,19 @@
 // グローバルで管理するカレンダーインスタンス
 let calendar = null;
 let currentMode = "detail";
+let currentView = "list";
 
 // 💡 【機能維持】画面の表示切り替えロジック
 function switchView(viewName) {
+  const normalizedView = viewName === "calendar" ? "calendar" : "list";
   const listViewArea = document.getElementById("listViewArea");
   const calendarViewArea = document.getElementById("calendarViewArea");
   const listViewBtn = document.getElementById("listViewBtn");
   const calendarViewBtn = document.getElementById("calendarViewBtn");
 
-  if (viewName === "list") {
+  currentView = normalizedView;
+
+  if (normalizedView === "list") {
     listViewArea.classList.remove("hidden");
     calendarViewArea.classList.add("hidden");
     listViewBtn.classList.add("active");
@@ -25,17 +29,261 @@ function switchView(viewName) {
       calendar.render();
     }
   }
+
+  const viewInput = document.getElementById("viewInput");
+  if (viewInput) {
+    viewInput.value = currentView;
+  }
 }
 
 // 💡 【機能維持】バリデーションロジック
+function formatDateLabel(dateStr) {
+  const date = new Date(`${dateStr}T00:00:00`);
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${year}/${month}/${day}`;
+}
+
+function formatTimeLabel(index) {
+  const hour = String(Math.floor(index / 2)).padStart(2, "0");
+  const minute = index % 2 === 0 ? "00" : "30";
+  return `${hour}:${minute}`;
+}
+
+function normalizeDateKey(value) {
+  if (!value) return null;
+
+  const parsedDate = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) return null;
+
+  const year = parsedDate.getFullYear();
+  const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
+  const day = String(parsedDate.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function buildFilterChips(tasks, filterType) {
+  const values = [
+    ...new Set(tasks.map((task) => task[filterType]).filter(Boolean)),
+  ];
+  if (values.length === 0) return "";
+
+  return `
+    <div class="filter-group">
+      <span class="filter-group-title">${filterType === "priority" ? "重要度" : "分類"}</span>
+      ${values
+        .map(
+          (value) => `
+          <button type="button" class="filter-chip" data-filter-type="${filterType}" data-filter-value="${value}">
+            ${value}
+          </button>
+        `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderUnscheduledTasks(tasks) {
+  const list = document.getElementById("unscheduledTaskList");
+  const filters = document.getElementById("unscheduledTaskFilters");
+  if (!list || !filters) return;
+
+  const activeFilters = {
+    priority: null,
+    categoryName: null,
+  };
+
+  const applyFilters = () => {
+    const filteredTasks = tasks.filter((todo) => {
+      if (activeFilters.priority && todo.priority !== activeFilters.priority)
+        return false;
+      if (
+        activeFilters.categoryName &&
+        (todo.categoryName || "分類なし") !== activeFilters.categoryName
+      )
+        return false;
+      return true;
+    });
+
+    list.innerHTML =
+      filteredTasks.length > 0
+        ? filteredTasks
+            .map((todo) => {
+              const priorityClass =
+                todo.priority === "高"
+                  ? "priority-high"
+                  : todo.priority === "低"
+                    ? "priority-low"
+                    : "priority-normal";
+              const doneClass = todo.isCompleted ? "completed" : "";
+              const dueDateText = todo.dueDate
+                ? `期日: ${normalizeDateKey(todo.dueDate)}`
+                : "期日未設定";
+              return `
+                <div class="unscheduled-task-item ${priorityClass} ${doneClass}">
+                  <div class="unscheduled-task-item-title-row">
+                    <div class="unscheduled-task-item-title">${todo.title}</div>
+                    <div class="unscheduled-task-item-date">${dueDateText}</div>
+                  </div>
+                  <div class="unscheduled-task-item-meta">${todo.categoryName || "分類なし"}</div>
+                </div>
+              `;
+            })
+            .join("")
+        : '<div class="schedule-item-empty">条件に一致するタスクはありません</div>';
+  };
+
+  filters.innerHTML = [
+    buildFilterChips(tasks, "priority"),
+    buildFilterChips(tasks, "categoryName"),
+  ]
+    .filter(Boolean)
+    .join("");
+
+  filters.querySelectorAll(".filter-chip").forEach((button) => {
+    button.addEventListener("click", () => {
+      const { filterType, filterValue } = button.dataset;
+      if (!filterType || !filterValue) return;
+      const currentValue = activeFilters[filterType];
+      activeFilters[filterType] =
+        currentValue === filterValue ? null : filterValue;
+      filters
+        .querySelectorAll(`.filter-chip[data-filter-type="${filterType}"]`)
+        .forEach((chip) => {
+          chip.classList.toggle(
+            "active",
+            chip.dataset.filterValue === activeFilters[filterType],
+          );
+        });
+      applyFilters();
+    });
+  });
+
+  applyFilters();
+}
+
+function openDaySchedule(dateStr) {
+  const overlay = document.getElementById("dayScheduleOverlay");
+  const title = document.getElementById("scheduleDateTitle");
+  const subtitle = document.getElementById("scheduleDateSubtitle");
+  const timeline = document.getElementById("scheduleTimeline");
+  const unscheduledTaskList = document.getElementById("unscheduledTaskList");
+
+  if (!overlay || !title || !subtitle || !timeline || !unscheduledTaskList)
+    return;
+
+  const selectedTasks = (window.scheduleTasks || [])
+    .filter((todo) => {
+      if (!todo.dueDate) {
+        return true;
+      }
+      return normalizeDateKey(todo.dueDate) === dateStr;
+    })
+    .sort((a, b) => {
+      const priorityOrder = { 高: 0, 中: 1, 低: 2 };
+      const priorityDiff =
+        (priorityOrder[a.priority] ?? 1) - (priorityOrder[b.priority] ?? 1);
+      if (priorityDiff !== 0) return priorityDiff;
+      return a.title.localeCompare(b.title, "ja");
+    });
+
+  const unscheduledTasks = (window.scheduleTasks || []).filter((todo) => {
+    if (todo.scheduledTime || todo.time) return false;
+    return true;
+  });
+
+  title.textContent = `${formatDateLabel(dateStr)} のスケジュール`;
+  subtitle.textContent =
+    selectedTasks.length > 0
+      ? `${selectedTasks.length}件の予定があります`
+      : "予定はまだありません";
+
+  renderUnscheduledTasks(unscheduledTasks);
+
+  const slots = Array.from({ length: 48 }, (_, index) => ({
+    time: formatTimeLabel(index),
+    items: [],
+  }));
+
+  const scheduledTasks = selectedTasks.filter(
+    (todo) => todo.scheduledTime || todo.time,
+  );
+
+  scheduledTasks.forEach((todo, index) => {
+    const slotIndex = index % 48;
+    slots[slotIndex].items.push(todo);
+  });
+
+  timeline.innerHTML = slots
+    .map((slot) => {
+      if (slot.items.length === 0) {
+        return `
+          <div class="schedule-slot">
+            <div class="schedule-time">${slot.time}</div>
+            <div class="schedule-item-list">
+              <div class="schedule-item-empty">予定なし</div>
+            </div>
+          </div>
+        `;
+      }
+
+      return `
+        <div class="schedule-slot">
+          <div class="schedule-time">${slot.time}</div>
+          <div class="schedule-item-list">
+            ${slot.items
+              .map((todo) => {
+                const priorityClass =
+                  todo.priority === "高"
+                    ? "priority-high"
+                    : todo.priority === "低"
+                      ? "priority-low"
+                      : "priority-normal";
+                const doneClass = todo.isCompleted ? "completed" : "";
+                return `
+                  <div class="schedule-item ${priorityClass} ${doneClass}">
+                    <div class="schedule-item-title">${todo.title}</div>
+                    <div class="schedule-item-meta">${todo.categoryName || "分類なし"}</div>
+                  </div>
+                `;
+              })
+              .join("")}
+          </div>
+        </div>
+      `;
+    })
+    .join("");
+
+  overlay.classList.remove("hidden");
+  overlay.setAttribute("aria-hidden", "false");
+}
+
+function closeDaySchedule() {
+  const overlay = document.getElementById("dayScheduleOverlay");
+  if (overlay) {
+    overlay.classList.add("hidden");
+    overlay.setAttribute("aria-hidden", "true");
+  }
+}
+
 window.addEventListener("DOMContentLoaded", () => {
+  switchView(window.initialView || "list");
+  handleCategoryChange();
+
   const todoForm = document.getElementById("todoForm");
   if (todoForm) {
     todoForm.addEventListener("submit", function (e) {
       const errorBox = document.getElementById("validationErrorBox");
+      const viewInput = document.getElementById("viewInput");
       const titleSimple = document.getElementById("titleSimple");
       const titleDetail = document.getElementById("titleDetail");
       let isFormEmpty = false;
+
+      if (viewInput) {
+        viewInput.value = currentView;
+      }
 
       if (currentMode === "simple") {
         if (titleSimple.value.trim() === "") {
@@ -56,6 +304,19 @@ window.addEventListener("DOMContentLoaded", () => {
         errorBox.classList.add("hidden");
       }
     });
+  }
+
+  const overlay = document.getElementById("dayScheduleOverlay");
+  const closeBtn = document.getElementById("closeDayScheduleBtn");
+  if (overlay) {
+    overlay.addEventListener("click", (event) => {
+      if (event.target === overlay) {
+        closeDaySchedule();
+      }
+    });
+  }
+  if (closeBtn) {
+    closeBtn.addEventListener("click", closeDaySchedule);
   }
 });
 

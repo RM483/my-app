@@ -1,9 +1,9 @@
 /* public/css/style.css */
 body {
   font-family: sans-serif;
-  max-width: 650px;
+  max-width: none;
   margin: 0 auto;
-  padding: 20px;
+  padding: 24px 32px 40px;
   background: #f7fafc;
   color: #4a5568;
 }
@@ -45,13 +45,198 @@ h2 {
 .calendar-container {
   background: white;
   border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  padding: 15px;
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
   margin-bottom: 20px;
 }
 #calendar {
-  max-height: 500px;
+  min-height: 720px;
+}
+.day-schedule-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(15, 23, 42, 0.45);
+  z-index: 2000;
+  display: flex;
+  justify-content: flex-end;
+  padding: 16px;
+}
+.day-schedule-panel {
+  width: min(760px, 100%);
+  max-height: calc(100vh - 32px);
+  overflow-y: auto;
+  background: white;
+  border-radius: 16px;
+  box-shadow: 0 20px 45px rgba(15, 23, 42, 0.2);
+  padding: 24px 20px 20px;
+  position: relative;
+}
+.day-schedule-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  border: none;
+  background: #edf2f7;
+  color: #4a5568;
+  width: 32px;
+  height: 32px;
+  border-radius: 999px;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+.day-schedule-header {
+  margin-right: 36px;
+  margin-bottom: 12px;
+}
+.day-schedule-header h3 {
+  margin: 0 0 4px;
+  color: #2d3748;
+}
+.day-schedule-header p {
+  margin: 0;
+  color: #718096;
+  font-size: 0.9rem;
+}
+.day-schedule-body {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.9fr) minmax(280px, 1.1fr);
+  gap: 16px;
+  align-items: start;
+}
+.day-schedule-sidebar {
+  background: #f8fafc;
+  border: 1px solid #e2e8f0;
+  border-radius: 12px;
+  padding: 12px;
+}
+.day-schedule-sidebar h4 {
+  margin: 0 0 6px;
+  font-size: 0.95rem;
+  color: #2d3748;
+}
+.day-schedule-sidebar-subtitle {
+  margin: 0 0 10px;
+  font-size: 0.8rem;
+  color: #718096;
+}
+.unscheduled-task-filters {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+.filter-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.filter-group-title {
+  font-size: 0.75rem;
+  font-weight: bold;
+  color: #4a5568;
+  width: 100%;
+}
+.filter-chip {
+  border: 1px solid #cbd5e0;
+  background: white;
+  color: #4a5568;
+  border-radius: 999px;
+  padding: 4px 8px;
+  font-size: 0.75rem;
+  cursor: pointer;
+}
+.filter-chip.active {
+  background: #4c51bf;
+  color: white;
+  border-color: #4c51bf;
+}
+.unscheduled-task-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.unscheduled-task-item {
+  border: 1px solid #e2e8f0;
+  background: white;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.unscheduled-task-item-title-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 8px;
+  align-items: center;
+}
+.unscheduled-task-item-title {
+  font-weight: bold;
+  color: #2d3748;
+  margin-bottom: 2px;
+}
+.unscheduled-task-item-date {
+  font-size: 0.75rem;
+  color: #4c51bf;
+  white-space: nowrap;
+}
+.unscheduled-task-item-meta {
+  font-size: 0.8rem;
+  color: #718096;
+}
+.schedule-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.schedule-slot {
+  display: grid;
+  grid-template-columns: 66px 1fr;
+  gap: 10px;
+  align-items: start;
+  padding-bottom: 8px;
+  border-bottom: 1px solid #edf2f7;
+}
+.schedule-slot:last-child {
+  border-bottom: none;
+}
+.schedule-time {
+  font-weight: bold;
+  color: #4c51bf;
+  font-size: 0.9rem;
+  padding-top: 2px;
+}
+.schedule-item-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.schedule-item {
+  border-left: 4px solid #4c51bf;
+  background: #f7fafc;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+.schedule-item.priority-high {
+  border-left-color: #e53e3e;
+}
+.schedule-item.priority-low {
+  border-left-color: #38a169;
+}
+.schedule-item.completed {
+  opacity: 0.7;
+}
+.schedule-item-title {
+  font-weight: bold;
+  color: #2d3748;
+  margin-bottom: 2px;
+}
+.schedule-item-meta {
+  font-size: 0.8rem;
+  color: #718096;
+}
+.schedule-item-empty {
+  color: #a0aec0;
+  font-size: 0.9rem;
+  padding: 4px 0;
 }
 .fc .fc-toolbar-title {
   font-size: 1.2em;
@@ -172,6 +357,17 @@ h2 {
 }
 .todo-item.alert-overdue {
   background-color: #fff5f5;
+}
+.inline-duplicate-error {
+  width: 100%;
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #fff5f5;
+  border: 1px solid #fed7d7;
+  color: #c53030;
+  font-size: 0.9em;
+  font-weight: bold;
 }
 
 /* インライン編集 */
