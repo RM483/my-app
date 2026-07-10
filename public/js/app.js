@@ -51,16 +51,136 @@ function formatTimeLabel(index) {
   return `${hour}:${minute}`;
 }
 
+function normalizeDateKey(value) {
+  if (!value) return null;
+
+  const parsedDate = value instanceof Date ? value : new Date(value);
+  if (Number.isNaN(parsedDate.getTime())) return null;
+
+  const year = parsedDate.getFullYear();
+  const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
+  const day = String(parsedDate.getDate()).padStart(2, "0");
+  return `${year}-${month}-${day}`;
+}
+
+function buildFilterChips(tasks, filterType) {
+  const values = [
+    ...new Set(tasks.map((task) => task[filterType]).filter(Boolean)),
+  ];
+  if (values.length === 0) return "";
+
+  return `
+    <div class="filter-group">
+      <span class="filter-group-title">${filterType === "priority" ? "重要度" : "分類"}</span>
+      ${values
+        .map(
+          (value) => `
+          <button type="button" class="filter-chip" data-filter-type="${filterType}" data-filter-value="${value}">
+            ${value}
+          </button>
+        `,
+        )
+        .join("")}
+    </div>
+  `;
+}
+
+function renderUnscheduledTasks(tasks) {
+  const list = document.getElementById("unscheduledTaskList");
+  const filters = document.getElementById("unscheduledTaskFilters");
+  if (!list || !filters) return;
+
+  const activeFilters = {
+    priority: null,
+    categoryName: null,
+  };
+
+  const applyFilters = () => {
+    const filteredTasks = tasks.filter((todo) => {
+      if (activeFilters.priority && todo.priority !== activeFilters.priority)
+        return false;
+      if (
+        activeFilters.categoryName &&
+        (todo.categoryName || "分類なし") !== activeFilters.categoryName
+      )
+        return false;
+      return true;
+    });
+
+    list.innerHTML =
+      filteredTasks.length > 0
+        ? filteredTasks
+            .map((todo) => {
+              const priorityClass =
+                todo.priority === "高"
+                  ? "priority-high"
+                  : todo.priority === "低"
+                    ? "priority-low"
+                    : "priority-normal";
+              const doneClass = todo.isCompleted ? "completed" : "";
+              const dueDateText = todo.dueDate
+                ? `期日: ${normalizeDateKey(todo.dueDate)}`
+                : "期日未設定";
+              return `
+                <div class="unscheduled-task-item ${priorityClass} ${doneClass}">
+                  <div class="unscheduled-task-item-title-row">
+                    <div class="unscheduled-task-item-title">${todo.title}</div>
+                    <div class="unscheduled-task-item-date">${dueDateText}</div>
+                  </div>
+                  <div class="unscheduled-task-item-meta">${todo.categoryName || "分類なし"}</div>
+                </div>
+              `;
+            })
+            .join("")
+        : '<div class="schedule-item-empty">条件に一致するタスクはありません</div>';
+  };
+
+  filters.innerHTML = [
+    buildFilterChips(tasks, "priority"),
+    buildFilterChips(tasks, "categoryName"),
+  ]
+    .filter(Boolean)
+    .join("");
+
+  filters.querySelectorAll(".filter-chip").forEach((button) => {
+    button.addEventListener("click", () => {
+      const { filterType, filterValue } = button.dataset;
+      if (!filterType || !filterValue) return;
+      const currentValue = activeFilters[filterType];
+      activeFilters[filterType] =
+        currentValue === filterValue ? null : filterValue;
+      filters
+        .querySelectorAll(`.filter-chip[data-filter-type="${filterType}"]`)
+        .forEach((chip) => {
+          chip.classList.toggle(
+            "active",
+            chip.dataset.filterValue === activeFilters[filterType],
+          );
+        });
+      applyFilters();
+    });
+  });
+
+  applyFilters();
+}
+
 function openDaySchedule(dateStr) {
   const overlay = document.getElementById("dayScheduleOverlay");
   const title = document.getElementById("scheduleDateTitle");
   const subtitle = document.getElementById("scheduleDateSubtitle");
   const timeline = document.getElementById("scheduleTimeline");
+  const unscheduledTaskList = document.getElementById("unscheduledTaskList");
 
-  if (!overlay || !title || !subtitle || !timeline) return;
+  if (!overlay || !title || !subtitle || !timeline || !unscheduledTaskList)
+    return;
 
   const selectedTasks = (window.scheduleTasks || [])
-    .filter((todo) => todo.dueDate && todo.dueDate.slice(0, 10) === dateStr)
+    .filter((todo) => {
+      if (!todo.dueDate) {
+        return true;
+      }
+      return normalizeDateKey(todo.dueDate) === dateStr;
+    })
     .sort((a, b) => {
       const priorityOrder = { 高: 0, 中: 1, 低: 2 };
       const priorityDiff =
@@ -69,18 +189,29 @@ function openDaySchedule(dateStr) {
       return a.title.localeCompare(b.title, "ja");
     });
 
+  const unscheduledTasks = (window.scheduleTasks || []).filter((todo) => {
+    if (todo.scheduledTime || todo.time) return false;
+    return true;
+  });
+
   title.textContent = `${formatDateLabel(dateStr)} のスケジュール`;
   subtitle.textContent =
     selectedTasks.length > 0
       ? `${selectedTasks.length}件の予定があります`
       : "予定はまだありません";
 
+  renderUnscheduledTasks(unscheduledTasks);
+
   const slots = Array.from({ length: 48 }, (_, index) => ({
     time: formatTimeLabel(index),
     items: [],
   }));
 
-  selectedTasks.forEach((todo, index) => {
+  const scheduledTasks = selectedTasks.filter(
+    (todo) => todo.scheduledTime || todo.time,
+  );
+
+  scheduledTasks.forEach((todo, index) => {
     const slotIndex = index % 48;
     slots[slotIndex].items.push(todo);
   });

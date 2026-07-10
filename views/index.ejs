@@ -143,7 +143,17 @@
           <h3 id="scheduleDateTitle">日付のスケジュール</h3>
           <p id="scheduleDateSubtitle">30分刻みでその日の予定を表示します</p>
         </div>
-        <div id="scheduleTimeline" class="schedule-timeline"></div>
+        <div class="day-schedule-body">
+          <div class="day-schedule-sidebar">
+            <h4>未配置タスク一覧</h4>
+            <p class="day-schedule-sidebar-subtitle">この日の一日スケジュールにまだ配置されていないタスクです</p>
+            <div id="unscheduledTaskFilters" class="unscheduled-task-filters"></div>
+            <div id="unscheduledTaskList" class="unscheduled-task-list"></div>
+          </div>
+          <div class="day-schedule-main">
+            <div id="scheduleTimeline" class="schedule-timeline"></div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -220,6 +230,8 @@
         dueDate: todo.dueDate ? todo.dueDate.toISOString() : null,
         priority: todo.priority,
         isCompleted: todo.isCompleted,
+        scheduledTime: null,
+        time: null,
         categoryName: categories.find(c => c.id === todo.categoryId)?.name || '分類なし'
       }))) %>;
 
