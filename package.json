@@ -6,7 +6,8 @@
   "main": "index.js",
   "scripts": {
     "start": "tsx index.ts",
-    "db:dev": "prisma dev"
+    "db:dev": "prisma dev",
+    "build": "npx prisma generate && tsc"
   },
   "keywords": [],
   "author": "",
