@@ -3,15 +3,19 @@
 // グローバルで管理するカレンダーインスタンス
 let calendar = null;
 let currentMode = "detail";
+let currentView = "list";
 
 // 💡 【機能維持】画面の表示切り替えロジック
 function switchView(viewName) {
+  const normalizedView = viewName === "calendar" ? "calendar" : "list";
   const listViewArea = document.getElementById("listViewArea");
   const calendarViewArea = document.getElementById("calendarViewArea");
   const listViewBtn = document.getElementById("listViewBtn");
   const calendarViewBtn = document.getElementById("calendarViewBtn");
 
-  if (viewName === "list") {
+  currentView = normalizedView;
+
+  if (normalizedView === "list") {
     listViewArea.classList.remove("hidden");
     calendarViewArea.classList.add("hidden");
     listViewBtn.classList.add("active");
@@ -24,6 +28,11 @@ function switchView(viewName) {
     if (calendar) {
       calendar.render();
     }
+  }
+
+  const viewInput = document.getElementById("viewInput");
+  if (viewInput) {
+    viewInput.value = currentView;
   }
 }
 
@@ -129,16 +138,21 @@ function closeDaySchedule() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  switchView("list");
+  switchView(window.initialView || "list");
   handleCategoryChange();
 
   const todoForm = document.getElementById("todoForm");
   if (todoForm) {
     todoForm.addEventListener("submit", function (e) {
       const errorBox = document.getElementById("validationErrorBox");
+      const viewInput = document.getElementById("viewInput");
       const titleSimple = document.getElementById("titleSimple");
       const titleDetail = document.getElementById("titleDetail");
       let isFormEmpty = false;
+
+      if (viewInput) {
+        viewInput.value = currentView;
+      }
 
       if (currentMode === "simple") {
         if (titleSimple.value.trim() === "") {

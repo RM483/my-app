@@ -86,6 +86,7 @@ async function renderIndexPage(
     errorType?: string;
     formValues?: Record<string, any>;
     duplicateTodoId?: number | null;
+    activeView?: string;
   },
 ) {
   const activeCategories = await prisma.category.findMany({
@@ -121,6 +122,8 @@ async function renderIndexPage(
     return priorityA - priorityB;
   });
 
+  const activeView = options.activeView === "calendar" ? "calendar" : "list";
+
   res.render("index", {
     todos: sortedTodos,
     categories: allDisplayCategories,
@@ -128,6 +131,7 @@ async function renderIndexPage(
     errorMessage: getErrorMessage(options.errorType),
     formValues: options.formValues || {},
     duplicateTodoId: options.duplicateTodoId ?? null,
+    initialView: activeView,
   });
 }
 
@@ -135,6 +139,10 @@ async function renderIndexPage(
 app.get("/", async (req, res) => {
   try {
     const errorType = req.query.error as string | undefined;
+    const requestedView =
+      typeof req.query.view === "string" && req.query.view === "calendar"
+        ? "calendar"
+        : "list";
 
     const todos = await prisma.todo.findMany({
       include: { category: true },
@@ -144,6 +152,7 @@ app.get("/", async (req, res) => {
       todos,
       errorType,
       formValues: {},
+      activeView: requestedView,
     });
   } catch (error) {
     console.error("データ取得に失敗したぞよ:", error);
@@ -154,9 +163,17 @@ app.get("/", async (req, res) => {
 // 💡 2. 新しいタスクの追加（重複防止ロジック付き）
 app.post("/todos", async (req, res) => {
   try {
-    const { title, dueDate, categoryId, newCategory, priority, titleSimple } =
-      req.body;
+    const {
+      title,
+      dueDate,
+      categoryId,
+      newCategory,
+      priority,
+      titleSimple,
+      view,
+    } = req.body;
 
+    const requestedView = view === "calendar" ? "calendar" : "list";
     const rawTitle = title || titleSimple;
     if (!rawTitle || rawTitle.trim() === "") {
       const todos = await prisma.todo.findMany({ include: { category: true } });
@@ -164,6 +181,7 @@ app.post("/todos", async (req, res) => {
         todos,
         errorType: "emptyTitle",
         formValues: buildEmptyFormValues(),
+        activeView: requestedView,
       });
     }
 
@@ -190,6 +208,7 @@ app.post("/todos", async (req, res) => {
         errorType: "duplicate",
         formValues: buildEmptyFormValues(),
         duplicateTodoId: null,
+        activeView: requestedView,
       });
     }
 
@@ -229,7 +248,8 @@ app.post("/todos", async (req, res) => {
         priority: priority || "中",
       },
     });
-    res.redirect("/");
+
+    res.redirect(requestedView === "calendar" ? "/?view=calendar" : "/");
   } catch (error) {
     console.error("タスクの追加に失敗したぞよ:", error);
     res.status(500).send("エラーが発生しました");
