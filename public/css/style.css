@@ -41,6 +41,41 @@ h2 {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
+.today-schedule-card {
+  margin-bottom: 20px;
+  padding: 18px;
+  border: 1px solid #d9e2f0;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+.today-schedule-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.today-schedule-header h2 {
+  margin: 0 0 4px;
+  font-size: 1.2rem;
+}
+.today-schedule-header p {
+  margin: 0;
+  color: #718096;
+  font-size: 0.9rem;
+}
+.today-schedule-guide {
+  color: #718096;
+  font-size: 0.78rem;
+  text-align: right;
+}
+.today-schedule-timeline {
+  max-height: 520px;
+  overflow-y: auto;
+  border-radius: 10px;
+}
+
 /* カレンダーコンテナ */
 .calendar-container {
   background: white;

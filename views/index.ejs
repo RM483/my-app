@@ -22,6 +22,17 @@
   </div>
 
   <div id="listViewArea">
+    <section class="today-schedule-card" aria-labelledby="todayScheduleTitle">
+      <div class="today-schedule-header">
+        <div>
+          <h2 id="todayScheduleTitle">今日のスケジュール</h2>
+          <p id="todayScheduleSubtitle">今日の予定を読み込んでいます</p>
+        </div>
+        <span class="today-schedule-guide">配置済みタスクはドラッグ・上下リサイズできます</span>
+      </div>
+      <div id="todayScheduleTimeline" class="schedule-timeline today-schedule-timeline"></div>
+    </section>
+
     <div class="search-container">
       <input type="text" id="taskSearchInput" class="search-input" placeholder="🔍 タスク名でキーワード検索... (入力すると一瞬で絞り込みます)" oninput="applyFilters()">
     </div>
