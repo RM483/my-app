@@ -89,10 +89,11 @@ function buildFilterChips(tasks, filterType) {
   `;
 }
 
-function renderUnscheduledTasks(tasks, selectedDate) {
+function renderUnscheduledTasks(tasks, selectedDate, overdueTasks = []) {
   const list = document.getElementById("unscheduledTaskList");
+  const overdueList = document.getElementById("overdueTaskList");
   const filters = document.getElementById("unscheduledTaskFilters");
-  if (!list || !filters) return;
+  if (!list || !overdueList || !filters) return;
 
   const orderedTasks = [...tasks].sort(
     (a, b) =>
@@ -176,6 +177,31 @@ function renderUnscheduledTasks(tasks, selectedDate) {
     });
   });
 
+  overdueList.innerHTML =
+    overdueTasks.length > 0
+      ? overdueTasks
+          .map((todo) => {
+            const priorityClass =
+              todo.priority === "高"
+                ? "priority-high"
+                : todo.priority === "低"
+                  ? "priority-low"
+                  : "priority-normal";
+            const doneClass = todo.isCompleted ? "completed" : "";
+            const dueDateText = `期日: ${normalizeDateKey(todo.dueDate)}`;
+            return `
+              <div class="unscheduled-task-item ${priorityClass} ${doneClass}" draggable="true" data-task-id="${todo.id}">
+                <div class="unscheduled-task-item-title-row">
+                  <div class="unscheduled-task-item-title">${todo.title}</div>
+                  <div class="unscheduled-task-item-date">${dueDateText}</div>
+                </div>
+                <div class="unscheduled-task-item-meta">${todo.categoryName || "分類なし"}</div>
+              </div>
+            `;
+          })
+          .join("")
+      : '<div class="schedule-item-empty">期日超過タスクはありません</div>';
+
   applyFilters();
 }
 
@@ -204,13 +230,25 @@ function openDaySchedule(dateStr) {
       return a.title.localeCompare(b.title, "ja");
     });
 
-  const unscheduledTasks = (window.scheduleTasks || []).filter(
+  const unassignedTasks = (window.scheduleTasks || []).filter(
     (todo) =>
       !(todo.schedules || []).some(
         (schedule) =>
           normalizeDateKey(schedule.scheduledStart) === dateStr,
       ),
   );
+  const overdueTasks = unassignedTasks
+    .filter((todo) => {
+      const dueDate = normalizeDateKey(todo.dueDate);
+      return Boolean(dueDate && dueDate < dateStr);
+    })
+    .sort((a, b) =>
+      normalizeDateKey(a.dueDate).localeCompare(normalizeDateKey(b.dueDate)),
+    );
+  const unscheduledTasks = unassignedTasks.filter((todo) => {
+    const dueDate = normalizeDateKey(todo.dueDate);
+    return !dueDate || dueDate >= dateStr;
+  });
 
   title.textContent = `${formatDateLabel(dateStr)} のスケジュール`;
   subtitle.textContent =
@@ -218,7 +256,7 @@ function openDaySchedule(dateStr) {
       ? `${selectedTasks.length}件の予定があります`
       : "予定はまだありません";
 
-  renderUnscheduledTasks(unscheduledTasks, dateStr);
+  renderUnscheduledTasks(unscheduledTasks, dateStr, overdueTasks);
 
   const slots = Array.from({ length: 48 }, (_, index) => ({
     time: formatTimeLabel(index),
@@ -454,9 +492,9 @@ async function persistTaskSchedule(
 function setupInteractiveSchedule(dateStr, scheduledTasks) {
   currentScheduleDate = dateStr;
   const timeline = document.getElementById("scheduleTimeline");
-  const taskList = document.getElementById("unscheduledTaskList");
+  const taskSidebar = document.getElementById("scheduleTaskSidebar");
   const subtitle = document.getElementById("scheduleDateSubtitle");
-  if (!timeline || !taskList || !subtitle) return;
+  if (!timeline || !taskSidebar || !subtitle) return;
 
   subtitle.textContent =
     scheduledTasks.length > 0
@@ -499,10 +537,13 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
             ? "priority-low"
             : "priority-normal";
       const completedClass = todo.isCompleted ? "completed" : "";
+      const normalizedDueDate = normalizeDateKey(todo.dueDate);
       const dueDateClass =
-        normalizeDateKey(todo.dueDate) === dateStr
+        normalizedDueDate === dateStr
           ? "due-on-selected-date"
-          : "";
+          : normalizedDueDate && normalizedDueDate < dateStr
+            ? "overdue-on-selected-date"
+            : "";
 
       return `
         <div class="scheduled-task-block ${priorityClass} ${completedClass} ${dueDateClass}"
@@ -572,7 +613,7 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
     persistTaskSchedule(taskId, startSlot, endSlot, draggedScheduleId);
   };
 
-  taskList.ondragstart = (event) => {
+  taskSidebar.ondragstart = (event) => {
     const item = event.target.closest(".unscheduled-task-item");
     if (!item) return;
     draggedScheduleTaskId = item.dataset.taskId;
@@ -582,21 +623,21 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
     event.dataTransfer.setData("text/plain", draggedScheduleTaskId);
     item.classList.add("dragging");
   };
-  taskList.ondragend = (event) => {
+  taskSidebar.ondragend = (event) => {
     event.target.closest(".unscheduled-task-item")?.classList.remove("dragging");
   };
-  taskList.ondragover = (event) => {
+  taskSidebar.ondragover = (event) => {
     event.preventDefault();
-    taskList.classList.add("drop-target");
+    taskSidebar.classList.add("drop-target");
   };
-  taskList.ondragleave = (event) => {
-    if (!taskList.contains(event.relatedTarget)) {
-      taskList.classList.remove("drop-target");
+  taskSidebar.ondragleave = (event) => {
+    if (!taskSidebar.contains(event.relatedTarget)) {
+      taskSidebar.classList.remove("drop-target");
     }
   };
-  taskList.ondrop = (event) => {
+  taskSidebar.ondrop = (event) => {
     event.preventDefault();
-    taskList.classList.remove("drop-target");
+    taskSidebar.classList.remove("drop-target");
     const taskId =
       event.dataTransfer.getData("text/plain") || draggedScheduleTaskId;
     if (taskId && draggedScheduleId) {

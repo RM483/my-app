@@ -120,6 +120,11 @@ h2 {
   font-size: 0.8rem;
   color: #718096;
 }
+.overdue-task-section {
+  margin-top: 18px;
+  padding-top: 14px;
+  border-top: 1px solid #e2e8f0;
+}
 .unscheduled-task-filters {
   display: flex;
   flex-direction: column;
@@ -576,7 +581,7 @@ h2 {
 .scheduled-task-block.dragging {
   opacity: 0.4;
 }
-.unscheduled-task-list.drop-target {
+.day-schedule-sidebar.drop-target {
   outline: 2px dashed #4c51bf;
   outline-offset: 4px;
   background: #eef2ff;
@@ -651,6 +656,9 @@ h2 {
 }
 .scheduled-task-block.due-on-selected-date {
   background: #fefcbf;
+}
+.scheduled-task-block.overdue-on-selected-date {
+  background: #fed7d7;
 }
 .scheduled-task-block.completed {
   opacity: 0.7;

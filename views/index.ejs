@@ -144,11 +144,16 @@
           <p id="scheduleDateSubtitle">30分刻みでその日の予定を表示します</p>
         </div>
         <div class="day-schedule-body">
-          <div class="day-schedule-sidebar">
+          <div id="scheduleTaskSidebar" class="day-schedule-sidebar">
             <h4>未配置タスク一覧</h4>
-            <p class="day-schedule-sidebar-subtitle">タスクを右の時間枠へドラッグしてください。ここへ戻すと未配置になります。</p>
+            <p class="day-schedule-sidebar-subtitle">タスクを右の時間枠へドラッグしてください。左側へ戻すと期日に応じて自動分類されます。</p>
             <div id="unscheduledTaskFilters" class="unscheduled-task-filters"></div>
             <div id="unscheduledTaskList" class="unscheduled-task-list"></div>
+            <div class="overdue-task-section">
+              <h4>期日超過タスク一覧</h4>
+              <p class="day-schedule-sidebar-subtitle">選択日より前が期日のタスクです（古い期日から表示）。</p>
+              <div id="overdueTaskList" class="unscheduled-task-list"></div>
+            </div>
           </div>
           <div class="day-schedule-main">
             <div id="scheduleTimeline" class="schedule-timeline"></div>
