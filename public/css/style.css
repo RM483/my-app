@@ -120,18 +120,20 @@ h2 {
   font-size: 1.1rem;
   cursor: pointer;
 }
-.day-schedule-header {
-  margin-right: 36px;
-  margin-bottom: 12px;
+.day-schedule-sidebar-date {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
 }
-.day-schedule-header h3 {
+.day-schedule-sidebar-date h3 {
   margin: 0 0 4px;
   color: #2d3748;
+  font-size: 1rem;
 }
-.day-schedule-header p {
+.day-schedule-sidebar-date p {
   margin: 0;
   color: #718096;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
 }
 .day-schedule-body {
   display: grid;
@@ -140,6 +142,11 @@ h2 {
   align-items: start;
 }
 .day-schedule-sidebar {
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 12px;

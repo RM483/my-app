@@ -178,12 +178,12 @@
     <div id="dayScheduleOverlay" class="day-schedule-overlay hidden" aria-hidden="true">
       <div class="day-schedule-panel" role="dialog" aria-modal="true">
         <button type="button" id="closeDayScheduleBtn" class="day-schedule-close" aria-label="閉じる">×</button>
-        <div class="day-schedule-header">
-          <h3 id="scheduleDateTitle">日付のスケジュール</h3>
-          <p id="scheduleDateSubtitle">30分刻みでその日の予定を表示します</p>
-        </div>
         <div class="day-schedule-body">
           <div id="scheduleTaskSidebar" class="day-schedule-sidebar">
+            <div class="day-schedule-sidebar-date">
+              <h3 id="scheduleDateTitle">日付のスケジュール</h3>
+              <p id="scheduleDateSubtitle">30分刻みでその日の予定を表示します</p>
+            </div>
             <h4>未配置タスク一覧</h4>
             <p class="day-schedule-sidebar-subtitle">タスクを右の時間枠へドラッグしてください。左側へ戻すと期日に応じて自動分類されます。</p>
             <div id="unscheduledTaskFilters" class="unscheduled-task-filters"></div>
