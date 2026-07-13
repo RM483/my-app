@@ -302,6 +302,81 @@ function getScheduleStartSlot(todo) {
   );
 }
 
+function calculateScheduleOverlapLayout(tasks) {
+  const entries = tasks
+    .map((todo, index) => {
+      const startSlot = getScheduleStartSlot(todo);
+      return {
+        todo,
+        index,
+        startSlot,
+        endSlot: Math.min(
+          48,
+          startSlot + getScheduleDurationSlots(todo),
+        ),
+        column: 0,
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.startSlot - b.startSlot ||
+        b.endSlot - a.endSlot ||
+        a.index - b.index,
+    );
+
+  const layouts = new Map();
+  let maximumColumns = 1;
+  let cluster = [];
+  let clusterEndSlot = -1;
+
+  const finishCluster = () => {
+    if (cluster.length === 0) return;
+
+    const activeEntries = [];
+    let clusterColumns = 1;
+
+    cluster.forEach((entry) => {
+      for (let index = activeEntries.length - 1; index >= 0; index -= 1) {
+        if (activeEntries[index].endSlot <= entry.startSlot) {
+          activeEntries.splice(index, 1);
+        }
+      }
+
+      const usedColumns = new Set(
+        activeEntries.map((activeEntry) => activeEntry.column),
+      );
+      let column = 0;
+      while (usedColumns.has(column)) column += 1;
+
+      entry.column = column;
+      activeEntries.push(entry);
+      clusterColumns = Math.max(clusterColumns, column + 1);
+    });
+
+    cluster.forEach((entry) => {
+      layouts.set(String(entry.todo.scheduleId), {
+        column: entry.column,
+        columnCount: clusterColumns,
+      });
+    });
+    maximumColumns = Math.max(maximumColumns, clusterColumns);
+  };
+
+  entries.forEach((entry) => {
+    if (cluster.length > 0 && entry.startSlot >= clusterEndSlot) {
+      finishCluster();
+      cluster = [];
+      clusterEndSlot = -1;
+    }
+
+    cluster.push(entry);
+    clusterEndSlot = Math.max(clusterEndSlot, entry.endSlot);
+  });
+  finishCluster();
+
+  return { layouts, maximumColumns };
+}
+
 function buildScheduleIso(dateStr, slot) {
   const [year, month, day] = dateStr.split("-").map(Number);
   return new Date(year, month - 1, day, 0, slot * 30).toISOString();
@@ -387,6 +462,12 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
     `,
   ).join("");
 
+  const overlapLayout = calculateScheduleOverlapLayout(scheduledTasks);
+  const gridMinimumWidth =
+    overlapLayout.maximumColumns >= 4
+      ? 76 + overlapLayout.maximumColumns * 160
+      : null;
+
   const taskBlocks = scheduledTasks
     .map((todo) => {
       const startSlot = getScheduleStartSlot(todo);
@@ -394,6 +475,12 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
         getScheduleDurationSlots(todo),
         48 - startSlot,
       );
+      const layout = overlapLayout.layouts.get(String(todo.scheduleId)) || {
+        column: 0,
+        columnCount: 1,
+      };
+      const columnWidth = 100 / layout.columnCount;
+      const columnLeft = columnWidth * layout.column;
       const priorityClass =
         todo.priority === "高"
           ? "priority-high"
@@ -409,7 +496,9 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
              data-schedule-id="${todo.scheduleId}"
              data-start-slot="${startSlot}"
              data-duration-slots="${durationSlots}"
-             style="top:${startSlot * 48 + 2}px;height:${durationSlots * 48 - 4}px">
+             data-overlap-column="${layout.column}"
+             data-overlap-columns="${layout.columnCount}"
+             style="top:${startSlot * 48 + 2}px;height:${durationSlots * 48 - 4}px;left:calc(${columnLeft}% + 3px);width:calc(${columnWidth}% - 6px)">
           <div class="scheduled-task-time">${formatTimeLabel(startSlot)}〜${formatTimeLabel(startSlot + durationSlots)}</div>
           <div class="scheduled-task-title">${escapeScheduleText(todo.title)}</div>
           <div class="scheduled-task-meta">${escapeScheduleText(todo.categoryName || "分類なし")}</div>
@@ -421,7 +510,7 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
     .join("");
 
   timeline.innerHTML = `
-    <div class="schedule-grid">
+    <div class="schedule-grid"${gridMinimumWidth ? ` style="min-width:${gridMinimumWidth}px"` : ""}>
       ${rows}
       <div class="scheduled-task-layer">${taskBlocks}</div>
     </div>

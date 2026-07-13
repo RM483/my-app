@@ -189,6 +189,8 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  overflow-x: auto;
+  padding-bottom: 4px;
 }
 .schedule-slot {
   display: grid;
@@ -578,6 +580,8 @@ h2 {
 
 .schedule-grid {
   position: relative;
+  flex: 0 0 auto;
+  width: 100%;
   min-height: 2304px;
   border: 1px solid #e2e8f0;
   border-radius: 10px;
@@ -617,7 +621,7 @@ h2 {
 }
 .scheduled-task-block {
   position: absolute;
-  right: 0;
+  right: auto;
   left: 0;
   z-index: 2;
   min-height: 44px;
