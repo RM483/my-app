@@ -20,6 +20,10 @@ model Todo {
   // 【新設】重要度を保存する項目（初期値は"中"）
   priority    String    @default("中")
 
+  // 一日スケジュール上の配置時間（未配置の場合は両方null）
+  scheduledStart DateTime?
+  scheduledEnd   DateTime?
+
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   categoryId  Int?      // 所属する分類の識別番号
 

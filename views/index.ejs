@@ -146,7 +146,7 @@
         <div class="day-schedule-body">
           <div class="day-schedule-sidebar">
             <h4>未配置タスク一覧</h4>
-            <p class="day-schedule-sidebar-subtitle">この日の一日スケジュールにまだ配置されていないタスクです</p>
+            <p class="day-schedule-sidebar-subtitle">タスクを右の時間枠へドラッグしてください。ここへ戻すと未配置になります。</p>
             <div id="unscheduledTaskFilters" class="unscheduled-task-filters"></div>
             <div id="unscheduledTaskList" class="unscheduled-task-list"></div>
           </div>
@@ -230,8 +230,8 @@
         dueDate: todo.dueDate ? todo.dueDate.toISOString() : null,
         priority: todo.priority,
         isCompleted: todo.isCompleted,
-        scheduledTime: null,
-        time: null,
+        scheduledStart: todo.scheduledStart ? todo.scheduledStart.toISOString() : null,
+        scheduledEnd: todo.scheduledEnd ? todo.scheduledEnd.toISOString() : null,
         categoryName: categories.find(c => c.id === todo.categoryId)?.name || '分類なし'
       }))) %>;
 

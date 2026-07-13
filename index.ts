@@ -14,6 +14,7 @@ app.set("view engine", "ejs");
 app.set("views", "./views");
 app.use(express.static("public"));
 app.use(express.urlencoded({ extended: true }));
+app.use(express.json());
 
 function getErrorMessage(errorType: string | undefined) {
   switch (errorType) {
@@ -413,6 +414,62 @@ app.post("/todos/:id/delete", async (req, res) => {
   } catch (error) {
     console.error("タスクの削除に失敗したぞよ:", error);
     res.status(500).send("エラーが発生しました");
+  }
+});
+
+// 一日スケジュールへの配置・移動・時間変更・未配置化
+app.post("/todos/:id/schedule", async (req, res) => {
+  try {
+    const todoId = Number(req.params.id);
+    if (!Number.isInteger(todoId)) {
+      return res.status(400).json({ error: "タスクIDが正しくありません" });
+    }
+
+    const { scheduledStart, scheduledEnd } = req.body;
+    const isUnscheduled = scheduledStart === null && scheduledEnd === null;
+
+    let parsedStart: Date | null = null;
+    let parsedEnd: Date | null = null;
+
+    if (!isUnscheduled) {
+      parsedStart = new Date(scheduledStart);
+      parsedEnd = new Date(scheduledEnd);
+
+      if (
+        Number.isNaN(parsedStart.getTime()) ||
+        Number.isNaN(parsedEnd.getTime()) ||
+        parsedEnd <= parsedStart
+      ) {
+        return res
+          .status(400)
+          .json({ error: "開始・終了時刻が正しくありません" });
+      }
+
+      const durationMinutes =
+        (parsedEnd.getTime() - parsedStart.getTime()) / (1000 * 60);
+      if (durationMinutes < 30 || durationMinutes > 24 * 60) {
+        return res.status(400).json({
+          error: "タスクの時間は30分以上24時間以内にしてください",
+        });
+      }
+    }
+
+    const updatedTodo = await prisma.todo.update({
+      where: { id: todoId },
+      data: {
+        scheduledStart: parsedStart,
+        scheduledEnd: parsedEnd,
+      },
+    });
+
+    res.json({
+      id: updatedTodo.id,
+      scheduledStart: updatedTodo.scheduledStart?.toISOString() ?? null,
+      scheduledEnd: updatedTodo.scheduledEnd?.toISOString() ?? null,
+    });
+  } catch (error) {
+    console.error("一日スケジュールの更新に失敗したぞよ:", error);
+    res.status(500).json({ error: "スケジュールを保存できませんでした" });
   }
 });
 

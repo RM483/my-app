@@ -4,6 +4,8 @@
 let calendar = null;
 let currentMode = "detail";
 let currentView = "list";
+let currentScheduleDate = null;
+let draggedScheduleTaskId = null;
 
 // 💡 【機能維持】画面の表示切り替えロジック
 function switchView(viewName) {
@@ -122,7 +124,7 @@ function renderUnscheduledTasks(tasks) {
                 ? `期日: ${normalizeDateKey(todo.dueDate)}`
                 : "期日未設定";
               return `
-                <div class="unscheduled-task-item ${priorityClass} ${doneClass}">
+                <div class="unscheduled-task-item ${priorityClass} ${doneClass}" draggable="true" data-task-id="${todo.id}">
                   <div class="unscheduled-task-item-title-row">
                     <div class="unscheduled-task-item-title">${todo.title}</div>
                     <div class="unscheduled-task-item-date">${dueDateText}</div>
@@ -190,7 +192,7 @@ function openDaySchedule(dateStr) {
     });
 
   const unscheduledTasks = (window.scheduleTasks || []).filter((todo) => {
-    if (todo.scheduledTime || todo.time) return false;
+    if (todo.scheduledStart && todo.scheduledEnd) return false;
     return true;
   });
 
@@ -207,8 +209,10 @@ function openDaySchedule(dateStr) {
     items: [],
   }));
 
-  const scheduledTasks = selectedTasks.filter(
-    (todo) => todo.scheduledTime || todo.time,
+  const scheduledTasks = (window.scheduleTasks || []).filter(
+    (todo) =>
+      todo.scheduledStart &&
+      normalizeDateKey(todo.scheduledStart) === dateStr,
   );
 
   scheduledTasks.forEach((todo, index) => {
@@ -255,9 +259,281 @@ function openDaySchedule(dateStr) {
       `;
     })
     .join("");
+  setupInteractiveSchedule(dateStr, scheduledTasks);
 
   overlay.classList.remove("hidden");
   overlay.setAttribute("aria-hidden", "false");
+}
+
+function getScheduleTask(taskId) {
+  return (window.scheduleTasks || []).find(
+    (todo) => String(todo.id) === String(taskId),
+  );
+}
+
+function getScheduleDurationSlots(todo) {
+  if (!todo?.scheduledStart || !todo?.scheduledEnd) return 2;
+  const minutes =
+    (new Date(todo.scheduledEnd).getTime() -
+      new Date(todo.scheduledStart).getTime()) /
+    60000;
+  return Math.max(1, Math.min(48, Math.round(minutes / 30)));
+}
+
+function getScheduleStartSlot(todo) {
+  if (!todo?.scheduledStart) return 0;
+  const start = new Date(todo.scheduledStart);
+  return Math.max(
+    0,
+    Math.min(47, Math.round((start.getHours() * 60 + start.getMinutes()) / 30)),
+  );
+}
+
+function buildScheduleIso(dateStr, slot) {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day, 0, slot * 30).toISOString();
+}
+
+async function persistTaskSchedule(taskId, startSlot, endSlot) {
+  const todo = getScheduleTask(taskId);
+  if (!todo) return;
+
+  const oldStart = todo.scheduledStart;
+  const oldEnd = todo.scheduledEnd;
+  const isUnscheduled = startSlot === null && endSlot === null;
+  const scheduledStart = isUnscheduled
+    ? null
+    : buildScheduleIso(currentScheduleDate, startSlot);
+  const scheduledEnd = isUnscheduled
+    ? null
+    : buildScheduleIso(currentScheduleDate, endSlot);
+
+  todo.scheduledStart = scheduledStart;
+  todo.scheduledEnd = scheduledEnd;
+  openDaySchedule(currentScheduleDate);
+
+  try {
+    const response = await fetch(`/todos/${todo.id}/schedule`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scheduledStart, scheduledEnd }),
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || "スケジュールを保存できませんでした");
+    }
+    todo.scheduledStart = result.scheduledStart;
+    todo.scheduledEnd = result.scheduledEnd;
+    openDaySchedule(currentScheduleDate);
+  } catch (error) {
+    todo.scheduledStart = oldStart;
+    todo.scheduledEnd = oldEnd;
+    openDaySchedule(currentScheduleDate);
+    alert(error.message);
+  }
+}
+
+function setupInteractiveSchedule(dateStr, scheduledTasks) {
+  currentScheduleDate = dateStr;
+  const timeline = document.getElementById("scheduleTimeline");
+  const taskList = document.getElementById("unscheduledTaskList");
+  const subtitle = document.getElementById("scheduleDateSubtitle");
+  if (!timeline || !taskList || !subtitle) return;
+
+  subtitle.textContent =
+    scheduledTasks.length > 0
+      ? `${scheduledTasks.length}件を配置済みです（30分単位）`
+      : "左のタスクを時間枠へドラッグしてください";
+
+  const rows = Array.from(
+    { length: 48 },
+    (_, slot) => `
+      <div class="schedule-drop-row" data-slot="${slot}">
+        <div class="schedule-time">${formatTimeLabel(slot)}</div>
+        <div class="schedule-drop-lane"></div>
+      </div>
+    `,
+  ).join("");
+
+  const taskBlocks = scheduledTasks
+    .map((todo) => {
+      const startSlot = getScheduleStartSlot(todo);
+      const durationSlots = Math.min(
+        getScheduleDurationSlots(todo),
+        48 - startSlot,
+      );
+      const priorityClass =
+        todo.priority === "高"
+          ? "priority-high"
+          : todo.priority === "低"
+            ? "priority-low"
+            : "priority-normal";
+      const completedClass = todo.isCompleted ? "completed" : "";
+
+      return `
+        <div class="scheduled-task-block ${priorityClass} ${completedClass}"
+             draggable="true"
+             data-task-id="${todo.id}"
+             data-start-slot="${startSlot}"
+             data-duration-slots="${durationSlots}"
+             style="top:${startSlot * 48 + 2}px;height:${durationSlots * 48 - 4}px">
+          <div class="scheduled-task-time">${formatTimeLabel(startSlot)}〜${formatTimeLabel(startSlot + durationSlots)}</div>
+          <div class="scheduled-task-title">${escapeScheduleText(todo.title)}</div>
+          <div class="scheduled-task-meta">${escapeScheduleText(todo.categoryName || "分類なし")}</div>
+          <button type="button" class="schedule-resize-handle schedule-resize-handle-top" aria-label="開始時刻を変更" title="上下にドラッグして開始時刻を変更"></button>
+          <button type="button" class="schedule-resize-handle schedule-resize-handle-bottom" aria-label="終了時刻を変更" title="上下にドラッグして終了時刻を変更"></button>
+        </div>
+      `;
+    })
+    .join("");
+
+  timeline.innerHTML = `
+    <div class="schedule-grid">
+      ${rows}
+      <div class="scheduled-task-layer">${taskBlocks}</div>
+    </div>
+  `;
+
+  timeline.ondragstart = (event) => {
+    const block = event.target.closest(".scheduled-task-block");
+    if (!block || event.target.closest(".schedule-resize-handle")) {
+      event.preventDefault();
+      return;
+    }
+    draggedScheduleTaskId = block.dataset.taskId;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draggedScheduleTaskId);
+    block.classList.add("dragging");
+  };
+  timeline.ondragend = (event) => {
+    event.target.closest(".scheduled-task-block")?.classList.remove("dragging");
+  };
+  timeline.ondragover = (event) => {
+    const row = event.target.closest(".schedule-drop-row");
+    if (!row) return;
+    event.preventDefault();
+    timeline
+      .querySelectorAll(".schedule-drop-row.drop-target")
+      .forEach((item) => item.classList.remove("drop-target"));
+    row.classList.add("drop-target");
+  };
+  timeline.ondrop = (event) => {
+    const row = event.target.closest(".schedule-drop-row");
+    if (!row) return;
+    event.preventDefault();
+    row.classList.remove("drop-target");
+    const taskId =
+      event.dataTransfer.getData("text/plain") || draggedScheduleTaskId;
+    const todo = getScheduleTask(taskId);
+    if (!todo) return;
+    const startSlot = Number(row.dataset.slot);
+    const endSlot = Math.min(48, startSlot + getScheduleDurationSlots(todo));
+    persistTaskSchedule(taskId, startSlot, endSlot);
+  };
+
+  taskList.ondragstart = (event) => {
+    const item = event.target.closest(".unscheduled-task-item");
+    if (!item) return;
+    draggedScheduleTaskId = item.dataset.taskId;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draggedScheduleTaskId);
+    item.classList.add("dragging");
+  };
+  taskList.ondragend = (event) => {
+    event.target.closest(".unscheduled-task-item")?.classList.remove("dragging");
+  };
+  taskList.ondragover = (event) => {
+    event.preventDefault();
+    taskList.classList.add("drop-target");
+  };
+  taskList.ondragleave = (event) => {
+    if (!taskList.contains(event.relatedTarget)) {
+      taskList.classList.remove("drop-target");
+    }
+  };
+  taskList.ondrop = (event) => {
+    event.preventDefault();
+    taskList.classList.remove("drop-target");
+    const taskId =
+      event.dataTransfer.getData("text/plain") || draggedScheduleTaskId;
+    if (taskId) persistTaskSchedule(taskId, null, null);
+  };
+
+  timeline.querySelectorAll(".schedule-resize-handle").forEach((handle) => {
+    handle.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const block = handle.closest(".scheduled-task-block");
+      const originalStartSlot = Number(block.dataset.startSlot);
+      const originalDuration = Number(block.dataset.durationSlots);
+      const originalEndSlot = originalStartSlot + originalDuration;
+      const isTopHandle = handle.classList.contains(
+        "schedule-resize-handle-top",
+      );
+      const startY = event.clientY;
+      let nextStartSlot = originalStartSlot;
+      let nextEndSlot = originalEndSlot;
+      let finished = false;
+
+      block.draggable = false;
+      block.classList.add("resizing");
+      handle.setPointerCapture(event.pointerId);
+
+      const move = (moveEvent) => {
+        const delta = Math.round((moveEvent.clientY - startY) / 48);
+        if (isTopHandle) {
+          nextStartSlot = Math.max(
+            0,
+            Math.min(originalEndSlot - 1, originalStartSlot + delta),
+          );
+        } else {
+          nextEndSlot = Math.max(
+            originalStartSlot + 1,
+            Math.min(48, originalEndSlot + delta),
+          );
+        }
+
+        const nextDuration = nextEndSlot - nextStartSlot;
+        block.style.top = `${nextStartSlot * 48 + 2}px`;
+        block.style.height = `${nextDuration * 48 - 4}px`;
+        block.querySelector(".scheduled-task-time").textContent =
+          `${formatTimeLabel(nextStartSlot)}〜${formatTimeLabel(nextEndSlot)}`;
+      };
+
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        block.draggable = true;
+        block.classList.remove("resizing");
+        handle.removeEventListener("pointermove", move);
+        handle.removeEventListener("pointerup", finish);
+        handle.removeEventListener("pointercancel", finish);
+        if (
+          nextStartSlot !== originalStartSlot ||
+          nextEndSlot !== originalEndSlot
+        ) {
+          persistTaskSchedule(
+            block.dataset.taskId,
+            nextStartSlot,
+            nextEndSlot,
+          );
+        }
+      };
+
+      handle.addEventListener("pointermove", move);
+      handle.addEventListener("pointerup", finish);
+      handle.addEventListener("pointercancel", finish);
+    });
+  });
+}
+
+function escapeScheduleText(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function closeDaySchedule() {
