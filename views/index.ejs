@@ -144,11 +144,25 @@
           <p id="scheduleDateSubtitle">30分刻みでその日の予定を表示します</p>
         </div>
         <div class="day-schedule-body">
-          <div class="day-schedule-sidebar">
+          <div id="scheduleTaskSidebar" class="day-schedule-sidebar">
             <h4>未配置タスク一覧</h4>
-            <p class="day-schedule-sidebar-subtitle">この日の一日スケジュールにまだ配置されていないタスクです</p>
+            <p class="day-schedule-sidebar-subtitle">タスクを右の時間枠へドラッグしてください。左側へ戻すと期日に応じて自動分類されます。</p>
             <div id="unscheduledTaskFilters" class="unscheduled-task-filters"></div>
             <div id="unscheduledTaskList" class="unscheduled-task-list"></div>
+            <div class="overdue-task-section">
+              <button type="button" id="overdueTaskToggle" class="overdue-task-toggle" aria-expanded="false" aria-controls="overdueTaskContent">
+                <span>期日超過タスク一覧</span>
+                <span class="overdue-task-toggle-summary">
+                  <span id="overdueTaskCount">0件</span>
+                  <span class="overdue-task-toggle-icon" aria-hidden="true">⌄</span>
+                </span>
+              </button>
+              <div id="overdueTaskContent" class="overdue-task-content hidden">
+                <p class="day-schedule-sidebar-subtitle">選択日より前が期日のタスクです（古い期日から表示）。</p>
+                <div id="overdueTaskFilters" class="unscheduled-task-filters"></div>
+                <div id="overdueTaskList" class="unscheduled-task-list"></div>
+              </div>
+            </div>
           </div>
           <div class="day-schedule-main">
             <div id="scheduleTimeline" class="schedule-timeline"></div>
@@ -230,8 +244,11 @@
         dueDate: todo.dueDate ? todo.dueDate.toISOString() : null,
         priority: todo.priority,
         isCompleted: todo.isCompleted,
-        scheduledTime: null,
-        time: null,
+        schedules: (todo.schedules || []).map(schedule => ({
+          id: schedule.id,
+          scheduledStart: schedule.scheduledStart.toISOString(),
+          scheduledEnd: schedule.scheduledEnd.toISOString()
+        })),
         categoryName: categories.find(c => c.id === todo.categoryId)?.name || '分類なし'
       }))) %>;
 

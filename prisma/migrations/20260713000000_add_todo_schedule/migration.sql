@@ -1,0 +1,4 @@
+-- AlterTable
+ALTER TABLE "Todo"
+ADD COLUMN IF NOT EXISTS "scheduledStart" TIMESTAMP(3),
+ADD COLUMN IF NOT EXISTS "scheduledEnd" TIMESTAMP(3);

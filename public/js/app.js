@@ -4,6 +4,10 @@
 let calendar = null;
 let currentMode = "detail";
 let currentView = "list";
+let currentScheduleDate = null;
+let draggedScheduleTaskId = null;
+let draggedScheduleId = null;
+let draggedScheduleDurationSlots = 2;
 
 // 💡 【機能維持】画面の表示切り替えロジック
 function switchView(viewName) {
@@ -85,18 +89,42 @@ function buildFilterChips(tasks, filterType) {
   `;
 }
 
-function renderUnscheduledTasks(tasks) {
+function renderUnscheduledTasks(tasks, selectedDate, overdueTasks = []) {
   const list = document.getElementById("unscheduledTaskList");
+  const overdueList = document.getElementById("overdueTaskList");
   const filters = document.getElementById("unscheduledTaskFilters");
-  if (!list || !filters) return;
+  const overdueFilters = document.getElementById("overdueTaskFilters");
+  const overdueToggle = document.getElementById("overdueTaskToggle");
+  const overdueContent = document.getElementById("overdueTaskContent");
+  const overdueCount = document.getElementById("overdueTaskCount");
+  if (
+    !list ||
+    !overdueList ||
+    !filters ||
+    !overdueFilters ||
+    !overdueToggle ||
+    !overdueContent ||
+    !overdueCount
+  )
+    return;
+
+  const orderedTasks = [...tasks].sort(
+    (a, b) =>
+      Number(normalizeDateKey(b.dueDate) === selectedDate) -
+      Number(normalizeDateKey(a.dueDate) === selectedDate),
+  );
 
   const activeFilters = {
     priority: null,
     categoryName: null,
   };
+  const overdueActiveFilters = {
+    priority: null,
+    categoryName: null,
+  };
 
   const applyFilters = () => {
-    const filteredTasks = tasks.filter((todo) => {
+    const filteredTasks = orderedTasks.filter((todo) => {
       if (activeFilters.priority && todo.priority !== activeFilters.priority)
         return false;
       if (
@@ -118,11 +146,16 @@ function renderUnscheduledTasks(tasks) {
                     ? "priority-low"
                     : "priority-normal";
               const doneClass = todo.isCompleted ? "completed" : "";
+              const dueOnSelectedDate =
+                normalizeDateKey(todo.dueDate) === selectedDate;
+              const dueDateClass = dueOnSelectedDate
+                ? "due-on-selected-date"
+                : "";
               const dueDateText = todo.dueDate
                 ? `期日: ${normalizeDateKey(todo.dueDate)}`
                 : "期日未設定";
               return `
-                <div class="unscheduled-task-item ${priorityClass} ${doneClass}">
+                <div class="unscheduled-task-item ${priorityClass} ${doneClass} ${dueDateClass}" draggable="true" data-task-id="${todo.id}">
                   <div class="unscheduled-task-item-title-row">
                     <div class="unscheduled-task-item-title">${todo.title}</div>
                     <div class="unscheduled-task-item-date">${dueDateText}</div>
@@ -161,6 +194,84 @@ function renderUnscheduledTasks(tasks) {
     });
   });
 
+  const applyOverdueFilters = () => {
+    const filteredTasks = overdueTasks.filter((todo) => {
+      if (
+        overdueActiveFilters.priority &&
+        todo.priority !== overdueActiveFilters.priority
+      )
+        return false;
+      if (
+        overdueActiveFilters.categoryName &&
+        (todo.categoryName || "分類なし") !==
+          overdueActiveFilters.categoryName
+      )
+        return false;
+      return true;
+    });
+
+    overdueList.innerHTML =
+      filteredTasks.length > 0
+        ? filteredTasks
+            .map((todo) => {
+              const priorityClass =
+                todo.priority === "高"
+                  ? "priority-high"
+                  : todo.priority === "低"
+                    ? "priority-low"
+                    : "priority-normal";
+              const doneClass = todo.isCompleted ? "completed" : "";
+              const dueDateText = `期日: ${normalizeDateKey(todo.dueDate)}`;
+              return `
+                <div class="unscheduled-task-item ${priorityClass} ${doneClass}" draggable="true" data-task-id="${todo.id}">
+                  <div class="unscheduled-task-item-title-row">
+                    <div class="unscheduled-task-item-title">${todo.title}</div>
+                    <div class="unscheduled-task-item-date">${dueDateText}</div>
+                  </div>
+                  <div class="unscheduled-task-item-meta">${todo.categoryName || "分類なし"}</div>
+                </div>
+              `;
+            })
+            .join("")
+        : '<div class="schedule-item-empty">条件に一致する期日超過タスクはありません</div>';
+  };
+
+  overdueCount.textContent = `${overdueTasks.length}件`;
+  overdueContent.classList.add("hidden");
+  overdueToggle.setAttribute("aria-expanded", "false");
+  overdueToggle.onclick = () => {
+    const willExpand = overdueContent.classList.contains("hidden");
+    overdueContent.classList.toggle("hidden", !willExpand);
+    overdueToggle.setAttribute("aria-expanded", String(willExpand));
+  };
+
+  overdueFilters.innerHTML = [
+    buildFilterChips(overdueTasks, "priority"),
+    buildFilterChips(overdueTasks, "categoryName"),
+  ]
+    .filter(Boolean)
+    .join("");
+
+  overdueFilters.querySelectorAll(".filter-chip").forEach((button) => {
+    button.addEventListener("click", () => {
+      const { filterType, filterValue } = button.dataset;
+      if (!filterType || !filterValue) return;
+      const currentValue = overdueActiveFilters[filterType];
+      overdueActiveFilters[filterType] =
+        currentValue === filterValue ? null : filterValue;
+      overdueFilters
+        .querySelectorAll(`.filter-chip[data-filter-type="${filterType}"]`)
+        .forEach((chip) => {
+          chip.classList.toggle(
+            "active",
+            chip.dataset.filterValue === overdueActiveFilters[filterType],
+          );
+        });
+      applyOverdueFilters();
+    });
+  });
+
+  applyOverdueFilters();
   applyFilters();
 }
 
@@ -189,9 +300,24 @@ function openDaySchedule(dateStr) {
       return a.title.localeCompare(b.title, "ja");
     });
 
-  const unscheduledTasks = (window.scheduleTasks || []).filter((todo) => {
-    if (todo.scheduledTime || todo.time) return false;
-    return true;
+  const unassignedTasks = (window.scheduleTasks || []).filter(
+    (todo) =>
+      !(todo.schedules || []).some(
+        (schedule) =>
+          normalizeDateKey(schedule.scheduledStart) === dateStr,
+      ),
+  );
+  const overdueTasks = unassignedTasks
+    .filter((todo) => {
+      const dueDate = normalizeDateKey(todo.dueDate);
+      return Boolean(dueDate && dueDate < dateStr);
+    })
+    .sort((a, b) =>
+      normalizeDateKey(a.dueDate).localeCompare(normalizeDateKey(b.dueDate)),
+    );
+  const unscheduledTasks = unassignedTasks.filter((todo) => {
+    const dueDate = normalizeDateKey(todo.dueDate);
+    return !dueDate || dueDate >= dateStr;
   });
 
   title.textContent = `${formatDateLabel(dateStr)} のスケジュール`;
@@ -200,15 +326,25 @@ function openDaySchedule(dateStr) {
       ? `${selectedTasks.length}件の予定があります`
       : "予定はまだありません";
 
-  renderUnscheduledTasks(unscheduledTasks);
+  renderUnscheduledTasks(unscheduledTasks, dateStr, overdueTasks);
 
   const slots = Array.from({ length: 48 }, (_, index) => ({
     time: formatTimeLabel(index),
     items: [],
   }));
 
-  const scheduledTasks = selectedTasks.filter(
-    (todo) => todo.scheduledTime || todo.time,
+  const scheduledTasks = (window.scheduleTasks || []).flatMap((todo) =>
+    (todo.schedules || [])
+      .filter(
+        (schedule) =>
+          normalizeDateKey(schedule.scheduledStart) === dateStr,
+      )
+      .map((schedule) => ({
+        ...todo,
+        scheduleId: schedule.id,
+        scheduledStart: schedule.scheduledStart,
+        scheduledEnd: schedule.scheduledEnd,
+      })),
   );
 
   scheduledTasks.forEach((todo, index) => {
@@ -255,9 +391,406 @@ function openDaySchedule(dateStr) {
       `;
     })
     .join("");
+  setupInteractiveSchedule(dateStr, scheduledTasks);
 
   overlay.classList.remove("hidden");
   overlay.setAttribute("aria-hidden", "false");
+}
+
+function getScheduleTask(taskId) {
+  return (window.scheduleTasks || []).find(
+    (todo) => String(todo.id) === String(taskId),
+  );
+}
+
+function getScheduleDurationSlots(todo) {
+  if (!todo?.scheduledStart || !todo?.scheduledEnd) return 2;
+  const minutes =
+    (new Date(todo.scheduledEnd).getTime() -
+      new Date(todo.scheduledStart).getTime()) /
+    60000;
+  return Math.max(1, Math.min(48, Math.round(minutes / 30)));
+}
+
+function getScheduleStartSlot(todo) {
+  if (!todo?.scheduledStart) return 0;
+  const start = new Date(todo.scheduledStart);
+  return Math.max(
+    0,
+    Math.min(47, Math.round((start.getHours() * 60 + start.getMinutes()) / 30)),
+  );
+}
+
+function calculateScheduleOverlapLayout(tasks) {
+  const entries = tasks
+    .map((todo, index) => {
+      const startSlot = getScheduleStartSlot(todo);
+      return {
+        todo,
+        index,
+        startSlot,
+        endSlot: Math.min(
+          48,
+          startSlot + getScheduleDurationSlots(todo),
+        ),
+        column: 0,
+      };
+    })
+    .sort(
+      (a, b) =>
+        a.startSlot - b.startSlot ||
+        b.endSlot - a.endSlot ||
+        a.index - b.index,
+    );
+
+  const layouts = new Map();
+  let maximumColumns = 1;
+  let cluster = [];
+  let clusterEndSlot = -1;
+
+  const finishCluster = () => {
+    if (cluster.length === 0) return;
+
+    const activeEntries = [];
+    let clusterColumns = 1;
+
+    cluster.forEach((entry) => {
+      for (let index = activeEntries.length - 1; index >= 0; index -= 1) {
+        if (activeEntries[index].endSlot <= entry.startSlot) {
+          activeEntries.splice(index, 1);
+        }
+      }
+
+      const usedColumns = new Set(
+        activeEntries.map((activeEntry) => activeEntry.column),
+      );
+      let column = 0;
+      while (usedColumns.has(column)) column += 1;
+
+      entry.column = column;
+      activeEntries.push(entry);
+      clusterColumns = Math.max(clusterColumns, column + 1);
+    });
+
+    cluster.forEach((entry) => {
+      layouts.set(String(entry.todo.scheduleId), {
+        column: entry.column,
+        columnCount: clusterColumns,
+      });
+    });
+    maximumColumns = Math.max(maximumColumns, clusterColumns);
+  };
+
+  entries.forEach((entry) => {
+    if (cluster.length > 0 && entry.startSlot >= clusterEndSlot) {
+      finishCluster();
+      cluster = [];
+      clusterEndSlot = -1;
+    }
+
+    cluster.push(entry);
+    clusterEndSlot = Math.max(clusterEndSlot, entry.endSlot);
+  });
+  finishCluster();
+
+  return { layouts, maximumColumns };
+}
+
+function buildScheduleIso(dateStr, slot) {
+  const [year, month, day] = dateStr.split("-").map(Number);
+  return new Date(year, month - 1, day, 0, slot * 30).toISOString();
+}
+
+async function persistTaskSchedule(
+  taskId,
+  startSlot,
+  endSlot,
+  scheduleId = null,
+) {
+  const todo = getScheduleTask(taskId);
+  if (!todo) return;
+
+  const isUnscheduled = startSlot === null && endSlot === null;
+  const scheduledStart = isUnscheduled
+    ? null
+    : buildScheduleIso(currentScheduleDate, startSlot);
+  const scheduledEnd = isUnscheduled
+    ? null
+    : buildScheduleIso(currentScheduleDate, endSlot);
+
+  try {
+    const response = await fetch(`/todos/${todo.id}/schedule`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        scheduleId,
+        scheduledStart,
+        scheduledEnd,
+      }),
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || "スケジュールを保存できませんでした");
+    }
+
+    todo.schedules = todo.schedules || [];
+    if (isUnscheduled) {
+      todo.schedules = todo.schedules.filter(
+        (schedule) => String(schedule.id) !== String(scheduleId),
+      );
+    } else {
+      const savedSchedule = {
+        id: result.scheduleId,
+        scheduledStart: result.scheduledStart,
+        scheduledEnd: result.scheduledEnd,
+      };
+      const scheduleIndex = todo.schedules.findIndex(
+        (schedule) => String(schedule.id) === String(scheduleId),
+      );
+      if (scheduleIndex >= 0) {
+        todo.schedules[scheduleIndex] = savedSchedule;
+      } else {
+        todo.schedules.push(savedSchedule);
+      }
+    }
+    openDaySchedule(currentScheduleDate);
+  } catch (error) {
+    alert(error.message);
+  }
+}
+
+function setupInteractiveSchedule(dateStr, scheduledTasks) {
+  currentScheduleDate = dateStr;
+  const timeline = document.getElementById("scheduleTimeline");
+  const taskSidebar = document.getElementById("scheduleTaskSidebar");
+  const subtitle = document.getElementById("scheduleDateSubtitle");
+  if (!timeline || !taskSidebar || !subtitle) return;
+
+  subtitle.textContent =
+    scheduledTasks.length > 0
+      ? `${scheduledTasks.length}件を配置済みです（30分単位）`
+      : "左のタスクを時間枠へドラッグしてください";
+
+  const rows = Array.from(
+    { length: 48 },
+    (_, slot) => `
+      <div class="schedule-drop-row" data-slot="${slot}">
+        <div class="schedule-time">${formatTimeLabel(slot)}</div>
+        <div class="schedule-drop-lane"></div>
+      </div>
+    `,
+  ).join("");
+
+  const overlapLayout = calculateScheduleOverlapLayout(scheduledTasks);
+  const gridMinimumWidth =
+    overlapLayout.maximumColumns >= 4
+      ? 76 + overlapLayout.maximumColumns * 160
+      : null;
+
+  const taskBlocks = scheduledTasks
+    .map((todo) => {
+      const startSlot = getScheduleStartSlot(todo);
+      const durationSlots = Math.min(
+        getScheduleDurationSlots(todo),
+        48 - startSlot,
+      );
+      const layout = overlapLayout.layouts.get(String(todo.scheduleId)) || {
+        column: 0,
+        columnCount: 1,
+      };
+      const columnWidth = 100 / layout.columnCount;
+      const columnLeft = columnWidth * layout.column;
+      const priorityClass =
+        todo.priority === "高"
+          ? "priority-high"
+          : todo.priority === "低"
+            ? "priority-low"
+            : "priority-normal";
+      const completedClass = todo.isCompleted ? "completed" : "";
+      const normalizedDueDate = normalizeDateKey(todo.dueDate);
+      const dueDateClass =
+        normalizedDueDate === dateStr
+          ? "due-on-selected-date"
+          : normalizedDueDate && normalizedDueDate < dateStr
+            ? "overdue-on-selected-date"
+            : "";
+
+      return `
+        <div class="scheduled-task-block ${priorityClass} ${completedClass} ${dueDateClass}"
+             draggable="true"
+             data-task-id="${todo.id}"
+             data-schedule-id="${todo.scheduleId}"
+             data-start-slot="${startSlot}"
+             data-duration-slots="${durationSlots}"
+             data-overlap-column="${layout.column}"
+             data-overlap-columns="${layout.columnCount}"
+             style="top:${startSlot * 48 + 2}px;height:${durationSlots * 48 - 4}px;left:calc(${columnLeft}% + 3px);width:calc(${columnWidth}% - 6px)">
+          <div class="scheduled-task-time">${formatTimeLabel(startSlot)}〜${formatTimeLabel(startSlot + durationSlots)}</div>
+          <div class="scheduled-task-title">${escapeScheduleText(todo.title)}</div>
+          <div class="scheduled-task-meta">${escapeScheduleText(todo.categoryName || "分類なし")}</div>
+          <button type="button" class="schedule-resize-handle schedule-resize-handle-top" aria-label="開始時刻を変更" title="上下にドラッグして開始時刻を変更"></button>
+          <button type="button" class="schedule-resize-handle schedule-resize-handle-bottom" aria-label="終了時刻を変更" title="上下にドラッグして終了時刻を変更"></button>
+        </div>
+      `;
+    })
+    .join("");
+
+  timeline.innerHTML = `
+    <div class="schedule-grid"${gridMinimumWidth ? ` style="min-width:${gridMinimumWidth}px"` : ""}>
+      ${rows}
+      <div class="scheduled-task-layer">${taskBlocks}</div>
+    </div>
+  `;
+
+  timeline.ondragstart = (event) => {
+    const block = event.target.closest(".scheduled-task-block");
+    if (!block || event.target.closest(".schedule-resize-handle")) {
+      event.preventDefault();
+      return;
+    }
+    draggedScheduleTaskId = block.dataset.taskId;
+    draggedScheduleId = block.dataset.scheduleId;
+    draggedScheduleDurationSlots = Number(block.dataset.durationSlots);
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draggedScheduleTaskId);
+    block.classList.add("dragging");
+  };
+  timeline.ondragend = (event) => {
+    event.target.closest(".scheduled-task-block")?.classList.remove("dragging");
+  };
+  timeline.ondragover = (event) => {
+    const row = event.target.closest(".schedule-drop-row");
+    if (!row) return;
+    event.preventDefault();
+    timeline
+      .querySelectorAll(".schedule-drop-row.drop-target")
+      .forEach((item) => item.classList.remove("drop-target"));
+    row.classList.add("drop-target");
+  };
+  timeline.ondrop = (event) => {
+    const row = event.target.closest(".schedule-drop-row");
+    if (!row) return;
+    event.preventDefault();
+    row.classList.remove("drop-target");
+    const taskId =
+      event.dataTransfer.getData("text/plain") || draggedScheduleTaskId;
+    if (!getScheduleTask(taskId)) return;
+    const startSlot = Number(row.dataset.slot);
+    const endSlot = Math.min(
+      48,
+      startSlot + (draggedScheduleDurationSlots || 2),
+    );
+    persistTaskSchedule(taskId, startSlot, endSlot, draggedScheduleId);
+  };
+
+  taskSidebar.ondragstart = (event) => {
+    const item = event.target.closest(".unscheduled-task-item");
+    if (!item) return;
+    draggedScheduleTaskId = item.dataset.taskId;
+    draggedScheduleId = null;
+    draggedScheduleDurationSlots = 2;
+    event.dataTransfer.effectAllowed = "move";
+    event.dataTransfer.setData("text/plain", draggedScheduleTaskId);
+    item.classList.add("dragging");
+  };
+  taskSidebar.ondragend = (event) => {
+    event.target.closest(".unscheduled-task-item")?.classList.remove("dragging");
+  };
+  taskSidebar.ondragover = (event) => {
+    event.preventDefault();
+    taskSidebar.classList.add("drop-target");
+  };
+  taskSidebar.ondragleave = (event) => {
+    if (!taskSidebar.contains(event.relatedTarget)) {
+      taskSidebar.classList.remove("drop-target");
+    }
+  };
+  taskSidebar.ondrop = (event) => {
+    event.preventDefault();
+    taskSidebar.classList.remove("drop-target");
+    const taskId =
+      event.dataTransfer.getData("text/plain") || draggedScheduleTaskId;
+    if (taskId && draggedScheduleId) {
+      persistTaskSchedule(taskId, null, null, draggedScheduleId);
+    }
+  };
+
+  timeline.querySelectorAll(".schedule-resize-handle").forEach((handle) => {
+    handle.addEventListener("pointerdown", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const block = handle.closest(".scheduled-task-block");
+      const originalStartSlot = Number(block.dataset.startSlot);
+      const originalDuration = Number(block.dataset.durationSlots);
+      const originalEndSlot = originalStartSlot + originalDuration;
+      const isTopHandle = handle.classList.contains(
+        "schedule-resize-handle-top",
+      );
+      const startY = event.clientY;
+      let nextStartSlot = originalStartSlot;
+      let nextEndSlot = originalEndSlot;
+      let finished = false;
+
+      block.draggable = false;
+      block.classList.add("resizing");
+      handle.setPointerCapture(event.pointerId);
+
+      const move = (moveEvent) => {
+        const delta = Math.round((moveEvent.clientY - startY) / 48);
+        if (isTopHandle) {
+          nextStartSlot = Math.max(
+            0,
+            Math.min(originalEndSlot - 1, originalStartSlot + delta),
+          );
+        } else {
+          nextEndSlot = Math.max(
+            originalStartSlot + 1,
+            Math.min(48, originalEndSlot + delta),
+          );
+        }
+
+        const nextDuration = nextEndSlot - nextStartSlot;
+        block.style.top = `${nextStartSlot * 48 + 2}px`;
+        block.style.height = `${nextDuration * 48 - 4}px`;
+        block.querySelector(".scheduled-task-time").textContent =
+          `${formatTimeLabel(nextStartSlot)}〜${formatTimeLabel(nextEndSlot)}`;
+      };
+
+      const finish = () => {
+        if (finished) return;
+        finished = true;
+        block.draggable = true;
+        block.classList.remove("resizing");
+        handle.removeEventListener("pointermove", move);
+        handle.removeEventListener("pointerup", finish);
+        handle.removeEventListener("pointercancel", finish);
+        if (
+          nextStartSlot !== originalStartSlot ||
+          nextEndSlot !== originalEndSlot
+        ) {
+          persistTaskSchedule(
+            block.dataset.taskId,
+            nextStartSlot,
+            nextEndSlot,
+            block.dataset.scheduleId,
+          );
+        }
+      };
+
+      handle.addEventListener("pointermove", move);
+      handle.addEventListener("pointerup", finish);
+      handle.addEventListener("pointercancel", finish);
+    });
+  });
+}
+
+function escapeScheduleText(value) {
+  return String(value ?? "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#039;");
 }
 
 function closeDaySchedule() {
