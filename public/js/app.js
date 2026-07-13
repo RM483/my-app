@@ -3,7 +3,7 @@
 // グローバルで管理するカレンダーインスタンス
 let calendar = null;
 let currentMode = "detail";
-let currentView = "list";
+let currentView = "today";
 let currentScheduleDate = null;
 let draggedScheduleTaskId = null;
 let draggedScheduleId = null;
@@ -11,27 +11,35 @@ let draggedScheduleDurationSlots = 2;
 
 // 💡 【機能維持】画面の表示切り替えロジック
 function switchView(viewName) {
-  const normalizedView = viewName === "calendar" ? "calendar" : "list";
-  const listViewArea = document.getElementById("listViewArea");
-  const calendarViewArea = document.getElementById("calendarViewArea");
-  const listViewBtn = document.getElementById("listViewBtn");
-  const calendarViewBtn = document.getElementById("calendarViewBtn");
+  const allowedViews = ["today", "list", "calendar"];
+  const normalizedView = allowedViews.includes(viewName) ? viewName : "today";
+  const viewElements = {
+    today: {
+      area: document.getElementById("todayScheduleViewArea"),
+      button: document.getElementById("todayScheduleViewBtn"),
+    },
+    list: {
+      area: document.getElementById("listViewArea"),
+      button: document.getElementById("listViewBtn"),
+    },
+    calendar: {
+      area: document.getElementById("calendarViewArea"),
+      button: document.getElementById("calendarViewBtn"),
+    },
+  };
 
   currentView = normalizedView;
 
-  if (normalizedView === "list") {
-    listViewArea.classList.remove("hidden");
-    calendarViewArea.classList.add("hidden");
-    listViewBtn.classList.add("active");
-    calendarViewBtn.classList.remove("active");
-  } else {
-    listViewArea.classList.add("hidden");
-    calendarViewArea.classList.remove("hidden");
-    listViewBtn.classList.remove("active");
-    calendarViewBtn.classList.add("active");
-    if (calendar) {
-      calendar.render();
-    }
+  // 3画面を同じ規則で切り替え、選択中のボタンだけを有効にする
+  Object.entries(viewElements).forEach(([view, elements]) => {
+    elements.area?.classList.toggle("hidden", view !== normalizedView);
+    elements.button?.classList.toggle("active", view === normalizedView);
+  });
+
+  if (normalizedView === "today") {
+    renderTodaySchedule();
+  } else if (normalizedView === "calendar" && calendar) {
+    calendar.render();
   }
 
   const viewInput = document.getElementById("viewInput");
@@ -918,7 +926,8 @@ function closeDaySchedule() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  switchView(window.initialView || "list");
+  restoreTaskFilterState();
+  switchView(window.initialView || "today");
   handleCategoryChange();
   renderTodaySchedule();
 
@@ -1028,6 +1037,63 @@ function toggleCategoryFilter(btn) {
   applyFilters();
 }
 
+// タスク編集後の再読み込みでも、現在の絞り込み条件を維持する
+const TASK_FILTER_STORAGE_KEY = "task-list-filter-state";
+
+function saveTaskFilterState(searchValue, categoryButtons) {
+  try {
+    const disabledCategoryIds = Array.from(categoryButtons)
+      .filter((btn) => btn.classList.contains("off"))
+      .map((btn) => btn.getAttribute("data-category-id"))
+      .filter(Boolean);
+
+    window.sessionStorage.setItem(
+      TASK_FILTER_STORAGE_KEY,
+      JSON.stringify({ searchValue, disabledCategoryIds }),
+    );
+  } catch (error) {
+    console.warn("絞り込み条件を保存できませんでした:", error);
+  }
+}
+
+function restoreTaskFilterState() {
+  const searchInput = document.getElementById("taskSearchInput");
+  const categoryButtons = document.querySelectorAll(".category-btn");
+  if (!searchInput) return;
+
+  try {
+    const storedState = window.sessionStorage.getItem(TASK_FILTER_STORAGE_KEY);
+    if (storedState) {
+      const parsedState = JSON.parse(storedState);
+      const disabledCategoryIds = Array.isArray(
+        parsedState?.disabledCategoryIds,
+      )
+        ? parsedState.disabledCategoryIds.filter(
+            (categoryId) => typeof categoryId === "string",
+          )
+        : [];
+
+      searchInput.value =
+        typeof parsedState?.searchValue === "string"
+          ? parsedState.searchValue
+          : "";
+      categoryButtons.forEach((btn) => {
+        const isDisabled = disabledCategoryIds.includes(
+          btn.getAttribute("data-category-id"),
+        );
+        btn.classList.toggle("off", isDisabled);
+        const checkMark = btn.querySelector(".check-mark");
+        if (checkMark) checkMark.innerText = isDisabled ? "" : "✓";
+      });
+    }
+  } catch (error) {
+    console.warn("絞り込み条件を復元できませんでした:", error);
+    window.sessionStorage.removeItem(TASK_FILTER_STORAGE_KEY);
+  }
+
+  applyFilters();
+}
+
 function toggleMasterFilter() {
   const masterBtn = document.getElementById("masterFilterBtn");
   const categoryButtons = document.querySelectorAll(".category-btn");
@@ -1046,7 +1112,8 @@ function applyFilters() {
   const categoryButtons = document.querySelectorAll(".category-btn");
   const todoItems = document.querySelectorAll(".todo-item");
   const searchInput = document.getElementById("taskSearchInput");
-  const searchWord = searchInput ? searchInput.value.toLowerCase().trim() : "";
+  const searchValue = searchInput ? searchInput.value : "";
+  const searchWord = searchValue.toLowerCase().trim();
   const activeCategoryIds = [];
 
   if (categoryButtons.length > 0) {
@@ -1097,6 +1164,8 @@ function applyFilters() {
       todoItems.length === 0 || visibleTodoCount > 0,
     );
   }
+
+  saveTaskFilterState(searchValue, categoryButtons);
 }
 
 // 💡 【機能維持】メモ風入力 ↔ 詳細入力の切り替え

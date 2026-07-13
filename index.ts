@@ -31,6 +31,18 @@ function getErrorMessage(errorType: string | undefined) {
   }
 }
 
+// 画面識別子を3種類へ正規化し、不正値は今日画面へ戻す
+function normalizeView(value: unknown) {
+  if (value === "list" || value === "calendar") return value;
+  return "today";
+}
+
+function getViewUrl(view: string) {
+  if (view === "list") return "/?view=list";
+  if (view === "calendar") return "/?view=calendar";
+  return "/";
+}
+
 function getDateInputValue(dateValue: Date | null) {
   if (!dateValue) return "";
   const date = new Date(dateValue);
@@ -135,7 +147,7 @@ async function renderIndexPage(
     return priorityA - priorityB;
   });
 
-  const activeView = options.activeView === "calendar" ? "calendar" : "list";
+  const activeView = normalizeView(options.activeView);
 
   res.render("index", {
     todos: sortedTodos,
@@ -152,10 +164,7 @@ async function renderIndexPage(
 app.get("/", async (req, res) => {
   try {
     const errorType = req.query.error as string | undefined;
-    const requestedView =
-      typeof req.query.view === "string" && req.query.view === "calendar"
-        ? "calendar"
-        : "list";
+    const requestedView = normalizeView(req.query.view);
 
     const todos = await prisma.todo.findMany({
       include: { category: true },
@@ -186,7 +195,7 @@ app.post("/todos", async (req, res) => {
       view,
     } = req.body;
 
-    const requestedView = view === "calendar" ? "calendar" : "list";
+    const requestedView = normalizeView(view);
     const rawTitle = title || titleSimple;
     if (!rawTitle || rawTitle.trim() === "") {
       const todos = await prisma.todo.findMany({ include: { category: true } });
@@ -262,7 +271,7 @@ app.post("/todos", async (req, res) => {
       },
     });
 
-    res.redirect(requestedView === "calendar" ? "/?view=calendar" : "/");
+    res.redirect(getViewUrl(requestedView));
   } catch (error) {
     console.error("タスクの追加に失敗したぞよ:", error);
     res.status(500).send("エラーが発生しました");
@@ -298,6 +307,7 @@ app.post("/todos/:id/update", async (req, res) => {
         todos,
         errorType: "listEmptyTitle",
         formValues: buildFormValues({}, currentTodo),
+        activeView: "list",
       });
     }
 
@@ -317,6 +327,7 @@ app.post("/todos/:id/update", async (req, res) => {
         errorType: "listDuplicate",
         formValues: buildFormValues({}, currentTodo),
         duplicateTodoId: todoId,
+        activeView: "list",
       });
     }
 
@@ -330,7 +341,7 @@ app.post("/todos/:id/update", async (req, res) => {
       data: updateData,
     });
 
-    res.redirect("/");
+    res.redirect("/?view=list");
   } catch (error) {
     console.error("タスクの直接更新に失敗したぞよ:", error);
     res.status(500).send("エラーが発生しました");
@@ -349,7 +360,7 @@ app.post("/todos/:id/category", async (req, res) => {
       where: { id: todoId },
       data: { categoryId: targetCategoryId },
     });
-    res.redirect("/");
+    res.redirect("/?view=list");
   } catch (error) {
     console.error("タスクの分類更新に失敗したぞよ:", error);
     res.status(500).send("エラーが発生しました");
@@ -363,7 +374,7 @@ app.post("/todos/:id/category/create", async (req, res) => {
     const { newCategoryName } = req.body;
 
     if (!newCategoryName || newCategoryName.trim() === "") {
-      return res.redirect("/");
+      return res.redirect("/?view=list");
     }
 
     const categoryName = newCategoryName.trim();
@@ -392,7 +403,7 @@ app.post("/todos/:id/category/create", async (req, res) => {
       data: { categoryId: category.id },
     });
 
-    res.redirect("/");
+    res.redirect("/?view=list");
   } catch (error) {
     console.error("タスク一覧からのカテゴリ新規追加に失敗したぞよ:", error);
     res.status(500).send("エラーが発生しました");
@@ -410,7 +421,7 @@ app.post("/todos/:id/toggle", async (req, res) => {
       where: { id: todoId },
       data: { isCompleted: !currentTodo.isCompleted },
     });
-    res.redirect("/");
+    res.redirect("/?view=list");
   } catch (error) {
     console.error("タスクの更新に失敗したぞよ:", error);
     res.status(500).send("エラーが発生しました");
@@ -422,7 +433,7 @@ app.post("/todos/:id/delete", async (req, res) => {
   try {
     const poolTodoId = Number(req.params.id);
     await prisma.todo.delete({ where: { id: poolTodoId } });
-    res.redirect("/");
+    res.redirect("/?view=list");
   } catch (error) {
     console.error("タスクの削除に失敗したぞよ:", error);
     res.status(500).send("エラーが発生しました");
@@ -524,7 +535,7 @@ app.post("/categories/:id/hide", async (req, res) => {
       where: { id: categoryId },
       data: { isActive: false },
     });
-    res.redirect("/");
+    res.redirect(getViewUrl(normalizeView(req.body.view)));
   } catch (error) {
     console.error("分類の非表示化に失敗したぞよ:", error);
     res.status(500).send("エラーが発生しました");
