@@ -968,6 +968,27 @@ function applyFilters() {
       searchWord === "" || item.getAttribute("data-title").includes(searchWord);
     item.classList.toggle("hidden", !(isCategoryMatch && isSearchMatch));
   });
+
+  let visibleTodoCount = 0;
+  document.querySelectorAll(".todo-category-column").forEach((column) => {
+    const visibleItems = Array.from(column.querySelectorAll(".todo-item")).filter(
+      (item) => !item.classList.contains("hidden"),
+    );
+    const count = column.querySelector(".todo-category-visible-count");
+    if (count) {
+      count.textContent = String(visibleItems.length);
+    }
+    visibleTodoCount += visibleItems.length;
+    column.classList.toggle("hidden", visibleItems.length === 0);
+  });
+
+  const emptyState = document.getElementById("todoFilterEmptyState");
+  if (emptyState) {
+    emptyState.classList.toggle(
+      "hidden",
+      todoItems.length === 0 || visibleTodoCount > 0,
+    );
+  }
 }
 
 // 💡 【機能維持】メモ風入力 ↔ 詳細入力の切り替え

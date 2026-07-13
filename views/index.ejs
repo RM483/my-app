@@ -60,12 +60,37 @@
       </div>
     <% } %>
 
+    <%
+      const todoColumns = categories
+        .map(category => ({
+          id: String(category.id),
+          name: category.name,
+          todos: todos.filter(todo => String(todo.categoryId) === String(category.id)),
+        }))
+        .filter(column => column.todos.length > 0);
+      const uncategorizedTodos = todos.filter(todo => !todo.categoryId);
+      if (uncategorizedTodos.length > 0) {
+        todoColumns.push({
+          id: 'none',
+          name: '分類なし',
+          todos: uncategorizedTodos,
+        });
+      }
+    %>
     <div class="todo-container">
       <% if (todos.length === 0) { %>
         <p style="color: gray; text-align: center;">タスクはまだありませんぞよ。</p>
       <% } %>
-      <ul style="list-style: none; padding: 0; margin: 0;">
-        <% todos.forEach(todo => { %>
+      <p id="todoFilterEmptyState" class="todo-filter-empty hidden">検索・絞り込み条件に一致するタスクはありません。</p>
+      <div class="todo-category-board">
+        <% todoColumns.forEach(column => { %>
+          <section class="todo-category-column" data-category-column="<%= column.id %>">
+            <div class="todo-category-column-header">
+              <h3><%= column.name %></h3>
+              <span class="todo-category-count"><span class="todo-category-visible-count"><%= column.todos.length %></span>件</span>
+            </div>
+            <ul class="todo-category-task-list">
+              <% column.todos.forEach(todo => { %>
           <% 
             let alertClass = "";
             let dateTextClass = "";
@@ -137,8 +162,11 @@
               <button type="submit" style="color: white; background-color: #e53e3e; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">削除</button>
             </form>
           </li>
+              <% }) %>
+            </ul>
+          </section>
         <% }) %>
-      </ul>
+      </div>
     </div>
   </div>
 
