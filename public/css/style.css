@@ -125,6 +125,36 @@ h2 {
   padding-top: 14px;
   border-top: 1px solid #e2e8f0;
 }
+.overdue-task-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #2d3748;
+  font-size: 0.95rem;
+  font-weight: bold;
+  cursor: pointer;
+}
+.overdue-task-toggle-summary {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: #4a5568;
+  font-size: 0.8rem;
+}
+.overdue-task-toggle-icon {
+  font-size: 1rem;
+  transition: transform 0.15s;
+}
+.overdue-task-toggle[aria-expanded="true"] .overdue-task-toggle-icon {
+  transform: rotate(180deg);
+}
+.overdue-task-content {
+  margin-top: 8px;
+}
 .unscheduled-task-filters {
   display: flex;
   flex-direction: column;

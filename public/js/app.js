@@ -93,7 +93,20 @@ function renderUnscheduledTasks(tasks, selectedDate, overdueTasks = []) {
   const list = document.getElementById("unscheduledTaskList");
   const overdueList = document.getElementById("overdueTaskList");
   const filters = document.getElementById("unscheduledTaskFilters");
-  if (!list || !overdueList || !filters) return;
+  const overdueFilters = document.getElementById("overdueTaskFilters");
+  const overdueToggle = document.getElementById("overdueTaskToggle");
+  const overdueContent = document.getElementById("overdueTaskContent");
+  const overdueCount = document.getElementById("overdueTaskCount");
+  if (
+    !list ||
+    !overdueList ||
+    !filters ||
+    !overdueFilters ||
+    !overdueToggle ||
+    !overdueContent ||
+    !overdueCount
+  )
+    return;
 
   const orderedTasks = [...tasks].sort(
     (a, b) =>
@@ -102,6 +115,10 @@ function renderUnscheduledTasks(tasks, selectedDate, overdueTasks = []) {
   );
 
   const activeFilters = {
+    priority: null,
+    categoryName: null,
+  };
+  const overdueActiveFilters = {
     priority: null,
     categoryName: null,
   };
@@ -177,31 +194,84 @@ function renderUnscheduledTasks(tasks, selectedDate, overdueTasks = []) {
     });
   });
 
-  overdueList.innerHTML =
-    overdueTasks.length > 0
-      ? overdueTasks
-          .map((todo) => {
-            const priorityClass =
-              todo.priority === "高"
-                ? "priority-high"
-                : todo.priority === "低"
-                  ? "priority-low"
-                  : "priority-normal";
-            const doneClass = todo.isCompleted ? "completed" : "";
-            const dueDateText = `期日: ${normalizeDateKey(todo.dueDate)}`;
-            return `
-              <div class="unscheduled-task-item ${priorityClass} ${doneClass}" draggable="true" data-task-id="${todo.id}">
-                <div class="unscheduled-task-item-title-row">
-                  <div class="unscheduled-task-item-title">${todo.title}</div>
-                  <div class="unscheduled-task-item-date">${dueDateText}</div>
-                </div>
-                <div class="unscheduled-task-item-meta">${todo.categoryName || "分類なし"}</div>
-              </div>
-            `;
-          })
-          .join("")
-      : '<div class="schedule-item-empty">期日超過タスクはありません</div>';
+  const applyOverdueFilters = () => {
+    const filteredTasks = overdueTasks.filter((todo) => {
+      if (
+        overdueActiveFilters.priority &&
+        todo.priority !== overdueActiveFilters.priority
+      )
+        return false;
+      if (
+        overdueActiveFilters.categoryName &&
+        (todo.categoryName || "分類なし") !==
+          overdueActiveFilters.categoryName
+      )
+        return false;
+      return true;
+    });
 
+    overdueList.innerHTML =
+      filteredTasks.length > 0
+        ? filteredTasks
+            .map((todo) => {
+              const priorityClass =
+                todo.priority === "高"
+                  ? "priority-high"
+                  : todo.priority === "低"
+                    ? "priority-low"
+                    : "priority-normal";
+              const doneClass = todo.isCompleted ? "completed" : "";
+              const dueDateText = `期日: ${normalizeDateKey(todo.dueDate)}`;
+              return `
+                <div class="unscheduled-task-item ${priorityClass} ${doneClass}" draggable="true" data-task-id="${todo.id}">
+                  <div class="unscheduled-task-item-title-row">
+                    <div class="unscheduled-task-item-title">${todo.title}</div>
+                    <div class="unscheduled-task-item-date">${dueDateText}</div>
+                  </div>
+                  <div class="unscheduled-task-item-meta">${todo.categoryName || "分類なし"}</div>
+                </div>
+              `;
+            })
+            .join("")
+        : '<div class="schedule-item-empty">条件に一致する期日超過タスクはありません</div>';
+  };
+
+  overdueCount.textContent = `${overdueTasks.length}件`;
+  overdueContent.classList.add("hidden");
+  overdueToggle.setAttribute("aria-expanded", "false");
+  overdueToggle.onclick = () => {
+    const willExpand = overdueContent.classList.contains("hidden");
+    overdueContent.classList.toggle("hidden", !willExpand);
+    overdueToggle.setAttribute("aria-expanded", String(willExpand));
+  };
+
+  overdueFilters.innerHTML = [
+    buildFilterChips(overdueTasks, "priority"),
+    buildFilterChips(overdueTasks, "categoryName"),
+  ]
+    .filter(Boolean)
+    .join("");
+
+  overdueFilters.querySelectorAll(".filter-chip").forEach((button) => {
+    button.addEventListener("click", () => {
+      const { filterType, filterValue } = button.dataset;
+      if (!filterType || !filterValue) return;
+      const currentValue = overdueActiveFilters[filterType];
+      overdueActiveFilters[filterType] =
+        currentValue === filterValue ? null : filterValue;
+      overdueFilters
+        .querySelectorAll(`.filter-chip[data-filter-type="${filterType}"]`)
+        .forEach((chip) => {
+          chip.classList.toggle(
+            "active",
+            chip.dataset.filterValue === overdueActiveFilters[filterType],
+          );
+        });
+      applyOverdueFilters();
+    });
+  });
+
+  applyOverdueFilters();
   applyFilters();
 }
 

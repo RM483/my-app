@@ -150,9 +150,18 @@
             <div id="unscheduledTaskFilters" class="unscheduled-task-filters"></div>
             <div id="unscheduledTaskList" class="unscheduled-task-list"></div>
             <div class="overdue-task-section">
-              <h4>期日超過タスク一覧</h4>
-              <p class="day-schedule-sidebar-subtitle">選択日より前が期日のタスクです（古い期日から表示）。</p>
-              <div id="overdueTaskList" class="unscheduled-task-list"></div>
+              <button type="button" id="overdueTaskToggle" class="overdue-task-toggle" aria-expanded="false" aria-controls="overdueTaskContent">
+                <span>期日超過タスク一覧</span>
+                <span class="overdue-task-toggle-summary">
+                  <span id="overdueTaskCount">0件</span>
+                  <span class="overdue-task-toggle-icon" aria-hidden="true">⌄</span>
+                </span>
+              </button>
+              <div id="overdueTaskContent" class="overdue-task-content hidden">
+                <p class="day-schedule-sidebar-subtitle">選択日より前が期日のタスクです（古い期日から表示）。</p>
+                <div id="overdueTaskFilters" class="unscheduled-task-filters"></div>
+                <div id="overdueTaskList" class="unscheduled-task-list"></div>
+              </div>
             </div>
           </div>
           <div class="day-schedule-main">
