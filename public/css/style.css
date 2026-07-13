@@ -155,6 +155,9 @@ h2 {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 160px;
+  padding: 24px 0;
+  box-sizing: border-box;
 }
 .unscheduled-task-item {
   border: 1px solid #e2e8f0;
