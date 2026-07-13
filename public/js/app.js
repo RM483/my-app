@@ -89,10 +89,16 @@ function buildFilterChips(tasks, filterType) {
   `;
 }
 
-function renderUnscheduledTasks(tasks) {
+function renderUnscheduledTasks(tasks, selectedDate) {
   const list = document.getElementById("unscheduledTaskList");
   const filters = document.getElementById("unscheduledTaskFilters");
   if (!list || !filters) return;
+
+  const orderedTasks = [...tasks].sort(
+    (a, b) =>
+      Number(normalizeDateKey(b.dueDate) === selectedDate) -
+      Number(normalizeDateKey(a.dueDate) === selectedDate),
+  );
 
   const activeFilters = {
     priority: null,
@@ -100,7 +106,7 @@ function renderUnscheduledTasks(tasks) {
   };
 
   const applyFilters = () => {
-    const filteredTasks = tasks.filter((todo) => {
+    const filteredTasks = orderedTasks.filter((todo) => {
       if (activeFilters.priority && todo.priority !== activeFilters.priority)
         return false;
       if (
@@ -122,11 +128,16 @@ function renderUnscheduledTasks(tasks) {
                     ? "priority-low"
                     : "priority-normal";
               const doneClass = todo.isCompleted ? "completed" : "";
+              const dueOnSelectedDate =
+                normalizeDateKey(todo.dueDate) === selectedDate;
+              const dueDateClass = dueOnSelectedDate
+                ? "due-on-selected-date"
+                : "";
               const dueDateText = todo.dueDate
                 ? `期日: ${normalizeDateKey(todo.dueDate)}`
                 : "期日未設定";
               return `
-                <div class="unscheduled-task-item ${priorityClass} ${doneClass}" draggable="true" data-task-id="${todo.id}">
+                <div class="unscheduled-task-item ${priorityClass} ${doneClass} ${dueDateClass}" draggable="true" data-task-id="${todo.id}">
                   <div class="unscheduled-task-item-title-row">
                     <div class="unscheduled-task-item-title">${todo.title}</div>
                     <div class="unscheduled-task-item-date">${dueDateText}</div>
@@ -207,7 +218,7 @@ function openDaySchedule(dateStr) {
       ? `${selectedTasks.length}件の予定があります`
       : "予定はまだありません";
 
-  renderUnscheduledTasks(unscheduledTasks);
+  renderUnscheduledTasks(unscheduledTasks, dateStr);
 
   const slots = Array.from({ length: 48 }, (_, index) => ({
     time: formatTimeLabel(index),
@@ -488,9 +499,13 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
             ? "priority-low"
             : "priority-normal";
       const completedClass = todo.isCompleted ? "completed" : "";
+      const dueDateClass =
+        normalizeDateKey(todo.dueDate) === dateStr
+          ? "due-on-selected-date"
+          : "";
 
       return `
-        <div class="scheduled-task-block ${priorityClass} ${completedClass}"
+        <div class="scheduled-task-block ${priorityClass} ${completedClass} ${dueDateClass}"
              draggable="true"
              data-task-id="${todo.id}"
              data-schedule-id="${todo.scheduleId}"
