@@ -6,6 +6,8 @@ let currentMode = "detail";
 let currentView = "list";
 let currentScheduleDate = null;
 let draggedScheduleTaskId = null;
+let draggedScheduleId = null;
+let draggedScheduleDurationSlots = 2;
 
 // 💡 【機能維持】画面の表示切り替えロジック
 function switchView(viewName) {
@@ -191,10 +193,13 @@ function openDaySchedule(dateStr) {
       return a.title.localeCompare(b.title, "ja");
     });
 
-  const unscheduledTasks = (window.scheduleTasks || []).filter((todo) => {
-    if (todo.scheduledStart && todo.scheduledEnd) return false;
-    return true;
-  });
+  const unscheduledTasks = (window.scheduleTasks || []).filter(
+    (todo) =>
+      !(todo.schedules || []).some(
+        (schedule) =>
+          normalizeDateKey(schedule.scheduledStart) === dateStr,
+      ),
+  );
 
   title.textContent = `${formatDateLabel(dateStr)} のスケジュール`;
   subtitle.textContent =
@@ -209,10 +214,18 @@ function openDaySchedule(dateStr) {
     items: [],
   }));
 
-  const scheduledTasks = (window.scheduleTasks || []).filter(
-    (todo) =>
-      todo.scheduledStart &&
-      normalizeDateKey(todo.scheduledStart) === dateStr,
+  const scheduledTasks = (window.scheduleTasks || []).flatMap((todo) =>
+    (todo.schedules || [])
+      .filter(
+        (schedule) =>
+          normalizeDateKey(schedule.scheduledStart) === dateStr,
+      )
+      .map((schedule) => ({
+        ...todo,
+        scheduleId: schedule.id,
+        scheduledStart: schedule.scheduledStart,
+        scheduledEnd: schedule.scheduledEnd,
+      })),
   );
 
   scheduledTasks.forEach((todo, index) => {
@@ -294,12 +307,15 @@ function buildScheduleIso(dateStr, slot) {
   return new Date(year, month - 1, day, 0, slot * 30).toISOString();
 }
 
-async function persistTaskSchedule(taskId, startSlot, endSlot) {
+async function persistTaskSchedule(
+  taskId,
+  startSlot,
+  endSlot,
+  scheduleId = null,
+) {
   const todo = getScheduleTask(taskId);
   if (!todo) return;
 
-  const oldStart = todo.scheduledStart;
-  const oldEnd = todo.scheduledEnd;
   const isUnscheduled = startSlot === null && endSlot === null;
   const scheduledStart = isUnscheduled
     ? null
@@ -308,27 +324,43 @@ async function persistTaskSchedule(taskId, startSlot, endSlot) {
     ? null
     : buildScheduleIso(currentScheduleDate, endSlot);
 
-  todo.scheduledStart = scheduledStart;
-  todo.scheduledEnd = scheduledEnd;
-  openDaySchedule(currentScheduleDate);
-
   try {
     const response = await fetch(`/todos/${todo.id}/schedule`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ scheduledStart, scheduledEnd }),
+      body: JSON.stringify({
+        scheduleId,
+        scheduledStart,
+        scheduledEnd,
+      }),
     });
     const result = await response.json();
     if (!response.ok) {
       throw new Error(result.error || "スケジュールを保存できませんでした");
     }
-    todo.scheduledStart = result.scheduledStart;
-    todo.scheduledEnd = result.scheduledEnd;
+
+    todo.schedules = todo.schedules || [];
+    if (isUnscheduled) {
+      todo.schedules = todo.schedules.filter(
+        (schedule) => String(schedule.id) !== String(scheduleId),
+      );
+    } else {
+      const savedSchedule = {
+        id: result.scheduleId,
+        scheduledStart: result.scheduledStart,
+        scheduledEnd: result.scheduledEnd,
+      };
+      const scheduleIndex = todo.schedules.findIndex(
+        (schedule) => String(schedule.id) === String(scheduleId),
+      );
+      if (scheduleIndex >= 0) {
+        todo.schedules[scheduleIndex] = savedSchedule;
+      } else {
+        todo.schedules.push(savedSchedule);
+      }
+    }
     openDaySchedule(currentScheduleDate);
   } catch (error) {
-    todo.scheduledStart = oldStart;
-    todo.scheduledEnd = oldEnd;
-    openDaySchedule(currentScheduleDate);
     alert(error.message);
   }
 }
@@ -374,6 +406,7 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
         <div class="scheduled-task-block ${priorityClass} ${completedClass}"
              draggable="true"
              data-task-id="${todo.id}"
+             data-schedule-id="${todo.scheduleId}"
              data-start-slot="${startSlot}"
              data-duration-slots="${durationSlots}"
              style="top:${startSlot * 48 + 2}px;height:${durationSlots * 48 - 4}px">
@@ -401,6 +434,8 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
       return;
     }
     draggedScheduleTaskId = block.dataset.taskId;
+    draggedScheduleId = block.dataset.scheduleId;
+    draggedScheduleDurationSlots = Number(block.dataset.durationSlots);
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", draggedScheduleTaskId);
     block.classList.add("dragging");
@@ -424,17 +459,21 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
     row.classList.remove("drop-target");
     const taskId =
       event.dataTransfer.getData("text/plain") || draggedScheduleTaskId;
-    const todo = getScheduleTask(taskId);
-    if (!todo) return;
+    if (!getScheduleTask(taskId)) return;
     const startSlot = Number(row.dataset.slot);
-    const endSlot = Math.min(48, startSlot + getScheduleDurationSlots(todo));
-    persistTaskSchedule(taskId, startSlot, endSlot);
+    const endSlot = Math.min(
+      48,
+      startSlot + (draggedScheduleDurationSlots || 2),
+    );
+    persistTaskSchedule(taskId, startSlot, endSlot, draggedScheduleId);
   };
 
   taskList.ondragstart = (event) => {
     const item = event.target.closest(".unscheduled-task-item");
     if (!item) return;
     draggedScheduleTaskId = item.dataset.taskId;
+    draggedScheduleId = null;
+    draggedScheduleDurationSlots = 2;
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", draggedScheduleTaskId);
     item.classList.add("dragging");
@@ -456,7 +495,9 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
     taskList.classList.remove("drop-target");
     const taskId =
       event.dataTransfer.getData("text/plain") || draggedScheduleTaskId;
-    if (taskId) persistTaskSchedule(taskId, null, null);
+    if (taskId && draggedScheduleId) {
+      persistTaskSchedule(taskId, null, null, draggedScheduleId);
+    }
   };
 
   timeline.querySelectorAll(".schedule-resize-handle").forEach((handle) => {
@@ -516,6 +557,7 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
             block.dataset.taskId,
             nextStartSlot,
             nextEndSlot,
+            block.dataset.scheduleId,
           );
         }
       };

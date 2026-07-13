@@ -230,8 +230,11 @@
         dueDate: todo.dueDate ? todo.dueDate.toISOString() : null,
         priority: todo.priority,
         isCompleted: todo.isCompleted,
-        scheduledStart: todo.scheduledStart ? todo.scheduledStart.toISOString() : null,
-        scheduledEnd: todo.scheduledEnd ? todo.scheduledEnd.toISOString() : null,
+        schedules: (todo.schedules || []).map(schedule => ({
+          id: schedule.id,
+          scheduledStart: schedule.scheduledStart.toISOString(),
+          scheduledEnd: schedule.scheduledEnd.toISOString()
+        })),
         categoryName: categories.find(c => c.id === todo.categoryId)?.name || '分類なし'
       }))) %>;
 

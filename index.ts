@@ -104,7 +104,19 @@ async function renderIndexPage(
   });
 
   const allDisplayCategories = [...activeCategories, ...orphanedCategories];
-  const sortedTodos = [...options.todos].sort((a, b) => {
+  const todoIds = options.todos.map((todo) => todo.id);
+  const schedules =
+    todoIds.length > 0
+      ? await prisma.todoSchedule.findMany({
+          where: { todoId: { in: todoIds } },
+          orderBy: { scheduledStart: "asc" },
+        })
+      : [];
+  const todosWithSchedules = options.todos.map((todo) => ({
+    ...todo,
+    schedules: schedules.filter((schedule) => schedule.todoId === todo.id),
+  }));
+  const sortedTodos = [...todosWithSchedules].sort((a, b) => {
     if (a.isCompleted !== b.isCompleted) {
       return a.isCompleted ? 1 : -1;
     }
@@ -425,47 +437,78 @@ app.post("/todos/:id/schedule", async (req, res) => {
       return res.status(400).json({ error: "タスクIDが正しくありません" });
     }
 
-    const { scheduledStart, scheduledEnd } = req.body;
+    const { scheduleId, scheduledStart, scheduledEnd } = req.body;
+    const parsedScheduleId =
+      scheduleId === null || scheduleId === undefined
+        ? null
+        : Number(scheduleId);
     const isUnscheduled = scheduledStart === null && scheduledEnd === null;
 
-    let parsedStart: Date | null = null;
-    let parsedEnd: Date | null = null;
-
-    if (!isUnscheduled) {
-      parsedStart = new Date(scheduledStart);
-      parsedEnd = new Date(scheduledEnd);
-
-      if (
-        Number.isNaN(parsedStart.getTime()) ||
-        Number.isNaN(parsedEnd.getTime()) ||
-        parsedEnd <= parsedStart
-      ) {
-        return res
-          .status(400)
-          .json({ error: "開始・終了時刻が正しくありません" });
+    if (isUnscheduled) {
+      if (!Number.isInteger(parsedScheduleId)) {
+        return res.status(400).json({ error: "配置IDが正しくありません" });
       }
 
-      const durationMinutes =
-        (parsedEnd.getTime() - parsedStart.getTime()) / (1000 * 60);
-      if (durationMinutes < 30 || durationMinutes > 24 * 60) {
-        return res.status(400).json({
-          error: "タスクの時間は30分以上24時間以内にしてください",
-        });
-      }
+      await prisma.todoSchedule.deleteMany({
+        where: { id: parsedScheduleId, todoId },
+      });
+      return res.json({
+        scheduleId: parsedScheduleId,
+        scheduledStart: null,
+        scheduledEnd: null,
+      });
     }
 
-    const updatedTodo = await prisma.todo.update({
-      where: { id: todoId },
-      data: {
-        scheduledStart: parsedStart,
-        scheduledEnd: parsedEnd,
-      },
-    });
+    const parsedStart = new Date(scheduledStart);
+    const parsedEnd = new Date(scheduledEnd);
+    if (
+      Number.isNaN(parsedStart.getTime()) ||
+      Number.isNaN(parsedEnd.getTime()) ||
+      parsedEnd <= parsedStart
+    ) {
+      return res
+        .status(400)
+        .json({ error: "開始・終了時刻が正しくありません" });
+    }
+
+    const durationMinutes =
+      (parsedEnd.getTime() - parsedStart.getTime()) / (1000 * 60);
+    if (durationMinutes < 30 || durationMinutes > 24 * 60) {
+      return res.status(400).json({
+        error: "タスクの時間は30分以上24時間以内にしてください",
+      });
+    }
+
+    let schedule;
+    if (Number.isInteger(parsedScheduleId)) {
+      const existingSchedule = await prisma.todoSchedule.findFirst({
+        where: { id: parsedScheduleId, todoId },
+      });
+      if (!existingSchedule) {
+        return res.status(404).json({ error: "配置が見つかりません" });
+      }
+
+      schedule = await prisma.todoSchedule.update({
+        where: { id: parsedScheduleId },
+        data: {
+          scheduledStart: parsedStart,
+          scheduledEnd: parsedEnd,
+        },
+      });
+    } else {
+      schedule = await prisma.todoSchedule.create({
+        data: {
+          todoId,
+          scheduledStart: parsedStart,
+          scheduledEnd: parsedEnd,
+        },
+      });
+    }
 
     res.json({
-      id: updatedTodo.id,
-      scheduledStart: updatedTodo.scheduledStart?.toISOString() ?? null,
-      scheduledEnd: updatedTodo.scheduledEnd?.toISOString() ?? null,
+      scheduleId: schedule.id,
+      scheduledStart: schedule.scheduledStart.toISOString(),
+      scheduledEnd: schedule.scheduledEnd.toISOString(),
     });
   } catch (error) {
     console.error("一日スケジュールの更新に失敗したぞよ:", error);
