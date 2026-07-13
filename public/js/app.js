@@ -811,6 +811,104 @@ function escapeScheduleText(value) {
     .replaceAll("'", "&#039;");
 }
 
+// 解析結果の案内を、登録エラーとは別の領域へ表示する
+function showTaskAnalysisMessage(message, isError = false) {
+  const messageBox = document.getElementById("taskAnalysisMessage");
+  if (!messageBox) return;
+  messageBox.textContent = message;
+  messageBox.classList.remove("hidden");
+  messageBox.classList.toggle("error", isError);
+}
+
+// 検証済みの構造化データだけを既存の詳細入力欄へ反映する
+function applyParsedTaskToDetailForm(parsedTask) {
+  const titleDetail = document.getElementById("titleDetail");
+  const dueDateField = document.getElementById("dueDateField");
+  const prioritySelect = document.getElementById("prioritySelect");
+  const categorySelect = document.getElementById("categorySelect");
+  const newCategoryInput = document.getElementById("newCategoryInput");
+  const simpleMode = document.getElementById("simpleInputMode");
+  const detailMode = document.getElementById("detailInputMode");
+  const toggleBtn = document.getElementById("toggleModeBtn");
+
+  if (
+    !titleDetail ||
+    !dueDateField ||
+    !prioritySelect ||
+    !categorySelect ||
+    !newCategoryInput ||
+    !simpleMode ||
+    !detailMode ||
+    !toggleBtn
+  )
+    return false;
+
+  titleDetail.value = parsedTask.title;
+  dueDateField.value = parsedTask.dueDate || "";
+  prioritySelect.value = parsedTask.priority;
+
+  const matchingCategory = Array.from(categorySelect.options).find(
+    (option) =>
+      option.value !== "指定なし" &&
+      option.value !== "__NEW__" &&
+      option.textContent.trim() === parsedTask.categoryName,
+  );
+
+  if (matchingCategory) {
+    categorySelect.value = matchingCategory.value;
+    newCategoryInput.value = "";
+  } else if (parsedTask.categoryName) {
+    // 未登録分類はDBへ保存せず、既存の新規分類入力へ設定する
+    categorySelect.value = "__NEW__";
+    newCategoryInput.value = parsedTask.categoryName;
+  } else {
+    categorySelect.value = "指定なし";
+    newCategoryInput.value = "";
+  }
+
+  handleCategoryChange();
+  currentMode = "detail";
+  simpleMode.classList.add("hidden");
+  detailMode.classList.remove("hidden");
+  toggleBtn.innerText = "💬 メモ風に自由に入力する";
+  return true;
+}
+
+// 自由文を解析し、ユーザーが確認できる詳細入力画面へ切り替える
+function analyzeSimpleTaskInput() {
+  const titleSimple = document.getElementById("titleSimple");
+  const errorBox = document.getElementById("validationErrorBox");
+  const sourceText = titleSimple?.value.trim() || "";
+
+  if (!sourceText) {
+    if (errorBox) errorBox.classList.remove("hidden");
+    showTaskAnalysisMessage("解析する文章を入力してください。", true);
+    return false;
+  }
+  if (!window.TaskTextParser) {
+    showTaskAnalysisMessage("解析機能を読み込めませんでした。", true);
+    return false;
+  }
+
+  const parsedTask = window.TaskTextParser.parse(sourceText);
+  const validatedTask = window.TaskTextParser.validate(parsedTask, sourceText);
+  if (!validatedTask.title) {
+    showTaskAnalysisMessage("タスク名を読み取れませんでした。", true);
+    return false;
+  }
+
+  if (!applyParsedTaskToDetailForm(validatedTask)) {
+    showTaskAnalysisMessage("解析結果を詳細入力へ反映できませんでした。", true);
+    return false;
+  }
+
+  if (errorBox) errorBox.classList.add("hidden");
+  showTaskAnalysisMessage(
+    "解析結果を詳細入力へ反映しました。内容を確認・修正してから「タスクを追加」を押してください。",
+  );
+  return true;
+}
+
 function closeDaySchedule() {
   const overlay = document.getElementById("dayScheduleOverlay");
   if (overlay) {
@@ -823,6 +921,11 @@ window.addEventListener("DOMContentLoaded", () => {
   switchView(window.initialView || "list");
   handleCategoryChange();
   renderTodaySchedule();
+
+  const analyzeSimpleTaskBtn = document.getElementById("analyzeSimpleTaskBtn");
+  if (analyzeSimpleTaskBtn) {
+    analyzeSimpleTaskBtn.addEventListener("click", analyzeSimpleTaskInput);
+  }
 
   const todoForm = document.getElementById("todoForm");
   if (todoForm) {
@@ -841,13 +944,16 @@ window.addEventListener("DOMContentLoaded", () => {
         if (titleSimple.value.trim() === "") {
           isFormEmpty = true;
         } else {
-          titleDetail.value = titleSimple.value;
+          // 自由入力時は即登録せず、解析結果の確認を必須にする
+          e.preventDefault();
+          errorBox.classList.add("hidden");
+          analyzeSimpleTaskInput();
+          return;
         }
-      } else {
-        if (titleDetail.value.trim() === "") {
-          isFormEmpty = true;
-        }
+      } else if (titleDetail.value.trim() === "") {
+        isFormEmpty = true;
       }
+
       if (isFormEmpty) {
         e.preventDefault();
         errorBox.classList.remove("hidden");
@@ -875,6 +981,8 @@ window.addEventListener("DOMContentLoaded", () => {
 // 💡 【機能維持】全体リセット
 function resetWholeForm() {
   document.getElementById("validationErrorBox").classList.add("hidden");
+  const analysisMessage = document.getElementById("taskAnalysisMessage");
+  if (analysisMessage) analysisMessage.classList.add("hidden");
   document.getElementById("titleSimple").value = "";
   document.getElementById("titleDetail").value = "";
   document.getElementById("dueDateField").value = "";
@@ -993,6 +1101,8 @@ function applyFilters() {
 
 // 💡 【機能維持】メモ風入力 ↔ 詳細入力の切り替え
 function toggleInputMode() {
+  const analysisMessage = document.getElementById("taskAnalysisMessage");
+  if (analysisMessage) analysisMessage.classList.add("hidden");
   const toggleBtn = document.getElementById("toggleModeBtn");
   const simpleMode = document.getElementById("simpleInputMode");
   const detailMode = document.getElementById("detailInputMode");

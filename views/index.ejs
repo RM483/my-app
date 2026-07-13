@@ -223,7 +223,8 @@
     <form id="todoForm" action="/todos" method="POST">
       <input type="hidden" name="view" id="viewInput" value="<%= initialView || 'list' %>">
       <div id="simpleInputMode" class="<%= (safeFormValues && safeFormValues.currentMode === 'simple') ? '' : 'hidden' %>">
-        <textarea name="titleSimple" id="titleSimple" class="big-textarea" placeholder="ここにタスクを自由に書きなぐってください"><%= safeFormValues && safeFormValues.titleSimple ? safeFormValues.titleSimple : '' %></textarea>
+        <textarea name="titleSimple" id="titleSimple" class="big-textarea" placeholder="例：来週金曜日までに研究発表の資料を早急に作る。このタスクは研究の分類に入れてください"><%= safeFormValues && safeFormValues.titleSimple ? safeFormValues.titleSimple : '' %></textarea>
+        <button type="button" id="analyzeSimpleTaskBtn" class="task-analysis-btn">文章を解析して詳細入力へ反映</button>
       </div>
 
       <div id="detailInputMode" class="<%= (safeFormValues && safeFormValues.currentMode === 'simple') ? 'hidden' : '' %>">
@@ -260,6 +261,8 @@
         </div>
       </div>
 
+      <div id="taskAnalysisMessage" class="task-analysis-message hidden" role="status"></div>
+
       <div class="form-actions">
         <button type="submit" class="submit-btn">タスクを追加</button>
         <button type="button" class="reset-btn" onclick="resetWholeForm()">🔄 全てリセット</button>
@@ -271,6 +274,7 @@
   <script>
     window.initialView = "<%= initialView || 'list' %>";
   </script>
+  <script src="/js/task-text-parser.js"></script>
   <script src="/js/app.js"></script>
 
   <script>
