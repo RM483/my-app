@@ -8,6 +8,7 @@ let currentScheduleDate = null;
 let draggedScheduleTaskId = null;
 let draggedScheduleId = null;
 let draggedScheduleDurationSlots = 2;
+let pendingAutoSchedulePreview = null;
 
 // 💡 【機能維持】画面の表示切り替えロジック
 function switchView(viewName) {
@@ -335,6 +336,79 @@ function refreshScheduleViews() {
   ) {
     openDaySchedule(currentScheduleDate);
   }
+
+  refreshAutoScheduleCandidates();
+}
+
+function formatAutoScheduleHours(minutes) {
+  const hours = minutes / 60;
+  return Number.isInteger(hours)
+    ? String(hours)
+    : hours.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function getRemainingAutoScheduleMinutes(todo) {
+  const scheduledMilliseconds = (todo.schedules || []).reduce(
+    (total, schedule) => {
+      const duration =
+        new Date(schedule.scheduledEnd).getTime() -
+        new Date(schedule.scheduledStart).getTime();
+      return total + Math.max(0, Number.isFinite(duration) ? duration : 0);
+    },
+    0,
+  );
+  return Math.max(
+    0,
+    Number(todo.estimatedMinutes || 0) - scheduledMilliseconds / 60000,
+  );
+}
+
+// 予定保存後の最新状態から、自動配置候補と残り時間を作り直す
+function refreshAutoScheduleCandidates() {
+  const select = document.getElementById("autoScheduleTodoSelect");
+  const runButton = document.getElementById("autoSchedulePreviewBtn");
+  const emptyMessage = document.getElementById("autoScheduleEmpty");
+  if (!select || !runButton || !emptyMessage) return;
+
+  if (pendingAutoSchedulePreview) resetAutoSchedulePreview();
+  const selectedTodoId = select.value;
+  const candidates = (window.scheduleTasks || [])
+    .map((todo) => ({
+      todo,
+      remainingMinutes: getRemainingAutoScheduleMinutes(todo),
+    }))
+    .filter(
+      ({ todo, remainingMinutes }) =>
+        !todo.isCompleted &&
+        todo.dueDate &&
+        Number(todo.estimatedMinutes) > 0 &&
+        remainingMinutes > 0 &&
+        (!todo.isSplittable || Number(todo.splitMinutes) > 0),
+    );
+
+  select.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "対象タスクを選択";
+  select.appendChild(placeholder);
+
+  candidates.forEach(({ todo, remainingMinutes }) => {
+    const option = document.createElement("option");
+    option.value = String(todo.id);
+    const splitSummary =
+      todo.isSplittable && todo.splitMinutes
+        ? ` / ${formatAutoScheduleHours(todo.splitMinutes)}時間ずつ`
+        : "";
+    option.textContent = `${todo.title}　⏱ 見積 ${formatAutoScheduleHours(todo.estimatedMinutes)}時間${splitSummary}・残り${formatAutoScheduleHours(remainingMinutes)}時間`;
+    select.appendChild(option);
+  });
+
+  const selectedStillExists = candidates.some(
+    ({ todo }) => String(todo.id) === selectedTodoId,
+  );
+  select.value = selectedStillExists ? selectedTodoId : "";
+  runButton.disabled = candidates.length === 0;
+  emptyMessage.classList.toggle("hidden", candidates.length > 0);
 }
 
 function openDaySchedule(dateStr) {
@@ -917,6 +991,108 @@ function analyzeSimpleTaskInput() {
   return true;
 }
 
+function showAutoScheduleMessage(message, isError = false) {
+  const messageBox = document.getElementById("autoScheduleMessage");
+  if (!messageBox) return;
+  messageBox.textContent = message;
+  messageBox.classList.remove("hidden");
+  messageBox.classList.toggle("error", isError);
+}
+
+function resetAutoSchedulePreview() {
+  pendingAutoSchedulePreview = null;
+  const preview = document.getElementById("autoSchedulePreview");
+  const list = document.getElementById("autoSchedulePreviewList");
+  const messageBox = document.getElementById("autoScheduleMessage");
+  if (preview) preview.classList.add("hidden");
+  if (list) list.innerHTML = "";
+  if (messageBox) messageBox.classList.add("hidden");
+}
+
+async function executeAutoSchedulePreview() {
+  const select = document.getElementById("autoScheduleTodoSelect");
+  const runButton = document.getElementById("autoSchedulePreviewBtn");
+  const todoId = select?.value;
+  if (!todoId) {
+    showAutoScheduleMessage("対象タスクを選択してください。", true);
+    return;
+  }
+
+  resetAutoSchedulePreview();
+  if (runButton) runButton.disabled = true;
+  try {
+    const response = await fetch(`/todos/${todoId}/auto-schedule/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || "自動配置のプレビューを作成できませんでした");
+    }
+
+    pendingAutoSchedulePreview = result;
+    const preview = document.getElementById("autoSchedulePreview");
+    const list = document.getElementById("autoSchedulePreviewList");
+    if (list) {
+      list.innerHTML = "";
+      result.placements.forEach((placement) => {
+        const item = document.createElement("li");
+        item.textContent = placement.label;
+        list.appendChild(item);
+      });
+    }
+    if (preview) preview.classList.remove("hidden");
+    showAutoScheduleMessage(
+      `${result.todoTitle} の配置候補を作成しました。確定するまで保存されません。`,
+    );
+  } catch (error) {
+    showAutoScheduleMessage(error.message, true);
+  } finally {
+    if (runButton) runButton.disabled = false;
+  }
+}
+
+async function confirmAutoSchedule() {
+  if (!pendingAutoSchedulePreview) return;
+
+  const confirmButton = document.querySelector(".auto-schedule-confirm-btn");
+  if (confirmButton) confirmButton.disabled = true;
+  try {
+    const response = await fetch(
+      `/todos/${pendingAutoSchedulePreview.todoId}/auto-schedule/confirm`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          placements: pendingAutoSchedulePreview.placements.map(
+            ({ scheduledStart, scheduledEnd }) => ({
+              scheduledStart,
+              scheduledEnd,
+            }),
+          ),
+        }),
+      },
+    );
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || "自動配置を確定できませんでした");
+    }
+
+    pendingAutoSchedulePreview = null;
+    showAutoScheduleMessage("自動配置を保存しました。");
+    window.location.reload();
+  } catch (error) {
+    showAutoScheduleMessage(error.message, true);
+    if (confirmButton) confirmButton.disabled = false;
+  }
+}
+
+function cancelAutoSchedulePreview() {
+  resetAutoSchedulePreview();
+  showAutoScheduleMessage("自動配置のプレビューをキャンセルしました。");
+}
+
 function closeDaySchedule() {
   const overlay = document.getElementById("dayScheduleOverlay");
   if (overlay) {
@@ -997,6 +1173,17 @@ function resetWholeForm() {
   document.getElementById("dueDateField").value = "";
   document.getElementById("newCategoryInput").value = "";
   document.getElementById("prioritySelect").value = "中";
+  const estimatedHoursField = document.getElementById("estimatedHoursField");
+  const isSplittableField = document.getElementById("isSplittableField");
+  const splitHoursField = document.getElementById("splitHoursField");
+  if (estimatedHoursField) estimatedHoursField.value = "";
+  if (isSplittableField) isSplittableField.value = "false";
+  if (splitHoursField) splitHoursField.value = "";
+  updateSplitEstimateVisibility(
+    "isSplittableField",
+    "splitHoursGroup",
+    "splitHoursField",
+  );
   const catSelect = document.getElementById("categorySelect");
   catSelect.value = "指定なし";
   handleCategoryChange();
@@ -1026,6 +1213,84 @@ function cancelInlineCategory(todoId) {
       inputForm.submit();
     }
   }, 200);
+}
+
+// 分割可否に応じて「1回あたり」の入力だけを切り替える
+function updateSplitEstimateVisibility(selectId, groupId, inputId) {
+  const select = document.getElementById(selectId);
+  const group = document.getElementById(groupId);
+  const input = document.getElementById(inputId);
+  if (!select || !group || !input) return;
+
+  const isSplittable = select.value === "true";
+  group.classList.toggle("hidden", !isSplittable);
+  input.disabled = !isSplittable;
+  input.required = isSplittable;
+}
+
+function toggleAutoPlacementEditor(todoId) {
+  const editorId = `autoPlacementEditor-${todoId}`;
+  const editor = document.getElementById(editorId);
+  if (!editor) return;
+
+  const willOpen = editor.classList.contains("hidden");
+  document.querySelectorAll(".auto-placement-editor").forEach((item) => {
+    item.classList.add("hidden");
+  });
+  document.querySelectorAll(".auto-placement-summary").forEach((button) => {
+    button.setAttribute("aria-expanded", "false");
+  });
+
+  if (willOpen) {
+    editor.classList.remove("hidden");
+    const button = document.querySelector(`[aria-controls="${editorId}"]`);
+    if (button) button.setAttribute("aria-expanded", "true");
+    const firstInput = editor.querySelector('input[name="estimatedHours"]');
+    if (firstInput) firstInput.focus();
+  }
+}
+
+function cancelAutoPlacementEditor(todoId) {
+  const editor = document.getElementById(`autoPlacementEditor-${todoId}`);
+  if (!editor) return;
+
+  const form = editor.querySelector("form");
+  if (form) {
+    form.reset();
+    updateSplitEstimateVisibility(
+      `todoSplittable-${todoId}`,
+      `todoSplitHoursGroup-${todoId}`,
+      `todoSplitHours-${todoId}`,
+    );
+  }
+  editor.classList.add("hidden");
+  const button = document.querySelector(
+    `[aria-controls="autoPlacementEditor-${todoId}"]`,
+  );
+  if (button) button.setAttribute("aria-expanded", "false");
+}
+
+// DBへ保存せず、この編集領域の入力値だけを初期設定へ戻す
+function resetAutoPlacementEditor(todoId) {
+  const editor = document.getElementById(`autoPlacementEditor-${todoId}`);
+  if (!editor) return;
+
+  const estimatedHours = editor.querySelector(
+    'input[name="estimatedHours"]',
+  );
+  const isSplittable = document.getElementById(`todoSplittable-${todoId}`);
+  const splitHours = document.getElementById(`todoSplitHours-${todoId}`);
+  if (!estimatedHours || !isSplittable || !splitHours) return;
+
+  estimatedHours.value = "";
+  isSplittable.value = "false";
+  splitHours.value = "";
+  updateSplitEstimateVisibility(
+    `todoSplittable-${todoId}`,
+    `todoSplitHoursGroup-${todoId}`,
+    `todoSplitHours-${todoId}`,
+  );
+  estimatedHours.focus();
 }
 
 // 💡 【機能維持】カテゴリ別フィルター＆キーワード爆速検索

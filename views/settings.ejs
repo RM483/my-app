@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ユーザー設定 - タスク管理システム</title>
+  <link href="/css/style.css" rel="stylesheet">
+</head>
+<body>
+  <main class="settings-page-shell">
+    <header class="settings-page-header">
+      <div>
+        <p class="settings-page-kicker">USER SETTINGS</p>
+        <h1>ユーザー設定</h1>
+        <p>自動配置を許可する曜日と時間帯を設定します。</p>
+      </div>
+      <a href="/" class="settings-back-link">← タスク管理へ戻る</a>
+    </header>
+
+    <% if (saved) { %>
+      <div class="settings-success-message" role="status">設定を保存しました。</div>
+    <% } else if (reset) { %>
+      <div class="settings-success-message" role="status">設定を初期状態へ戻しました。</div>
+    <% } %>
+    <% if (errors.length > 0) { %>
+      <div class="settings-error-message" role="alert">
+        <strong>設定を保存できませんでした。</strong>
+        <ul>
+          <% errors.forEach(error => { %>
+            <li><%= error %></li>
+          <% }) %>
+        </ul>
+      </div>
+    <% } %>
+
+    <section class="settings-card">
+      <div class="settings-card-heading">
+        <div>
+          <h2>自動配置を許可する時間</h2>
+          <p>許可する曜日には、重複しない時間帯を1つ以上設定してください。</p>
+        </div>
+      </div>
+
+      <form action="/settings" method="POST" id="availabilitySettingsForm">
+        <div class="availability-table">
+          <div class="availability-table-header" aria-hidden="true">
+            <span>曜日</span>
+            <span>自動配置の許可</span>
+            <span>自動配置の時間帯</span>
+          </div>
+
+          <% days.forEach(day => { %>
+            <section class="availability-day-row" data-weekday="<%= day.weekday %>">
+              <h3 class="availability-weekday"><%= day.name %></h3>
+              <div class="availability-permission">
+                <label class="mobile-field-label" for="enabled-<%= day.weekday %>">自動配置の許可</label>
+                <select
+                  name="enabled-<%= day.weekday %>"
+                  id="enabled-<%= day.weekday %>"
+                  class="availability-select"
+                  onchange="toggleDayAvailability('<%= day.weekday %>')"
+                >
+                  <option value="true" <%= day.isEnabled ? 'selected' : '' %>>許可する</option>
+                  <option value="false" <%= !day.isEnabled ? 'selected' : '' %>>許可しない</option>
+                </select>
+              </div>
+
+              <div class="availability-ranges-cell">
+                <span class="mobile-field-label">自動配置の時間帯</span>
+                <div id="ranges-editor-<%= day.weekday %>" class="<%= day.isEnabled ? '' : 'hidden' %>">
+                  <div id="ranges-list-<%= day.weekday %>" class="availability-ranges-list">
+                    <% day.ranges.forEach(range => { %>
+                      <div class="availability-time-range">
+                        <input type="time" name="start-<%= day.weekday %>" value="<%= range.startTime %>" aria-label="<%= day.name %>の開始時刻" required <%= day.isEnabled ? '' : 'disabled' %>>
+                        <span class="availability-time-separator">〜</span>
+                        <input type="time" name="end-<%= day.weekday %>" value="<%= range.endTime %>" aria-label="<%= day.name %>の終了時刻" required <%= day.isEnabled ? '' : 'disabled' %>>
+                        <button type="button" class="availability-remove-btn" onclick="removeTimeRange(this)">削除</button>
+                      </div>
+                    <% }) %>
+                  </div>
+                  <button type="button" class="availability-add-btn" onclick="addTimeRange('<%= day.weekday %>', '<%= day.name %>')">＋ 時間帯を追加</button>
+                </div>
+                <span id="ranges-disabled-<%= day.weekday %>" class="availability-disabled-mark <%= day.isEnabled ? 'hidden' : '' %>">—</span>
+              </div>
+            </section>
+          <% }) %>
+        </div>
+
+        <div class="settings-form-actions">
+          <button type="submit" formmethod="POST" formaction="/settings/reset" formnovalidate class="settings-reset-btn">設定をリセット</button>
+          <button type="submit" class="settings-save-btn">設定を保存</button>
+          <a href="/" class="settings-cancel-link">タスク管理へ戻る</a>
+        </div>
+      </form>
+    </section>
+  </main>
+
+  <script src="/js/settings.js"></script>
+</body>
+</html>

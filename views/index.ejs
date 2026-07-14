@@ -14,7 +14,20 @@
   <% const safeErrorMessage = typeof errorMessage !== 'undefined' ? errorMessage : null; %>
   <% const safeDuplicateTodoId = typeof duplicateTodoId !== 'undefined' ? duplicateTodoId : null; %>
   <% const safeErrorType = typeof error !== 'undefined' ? error : null; %>
-  <h1>タスク管理システム</h1>
+  <% const safeAutoPlacementEditTodoId = typeof autoPlacementEditTodoId !== 'undefined' ? autoPlacementEditTodoId : null; %>
+  <%
+    const formatEstimatedHours = (minutes) => {
+      if (!minutes) return '';
+      const hours = minutes / 60;
+      return Number.isInteger(hours)
+        ? String(hours)
+        : hours.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
+    };
+  %>
+  <header class="app-page-header">
+    <h1>タスク管理システム</h1>
+    <a href="/settings" class="user-settings-link">⚙ ユーザー設定</a>
+  </header>
 
   <div class="view-switcher">
     <button type="button" id="todayScheduleViewBtn" class="switch-btn active" onclick="switchView('today')">🕒 今日のスケジュール</button>
@@ -56,7 +69,7 @@
       </div>
     <% } %>
 
-    <% if (safeErrorType === 'listDuplicate' || safeErrorType === 'listEmptyTitle') { %>
+    <% if (safeErrorType === 'listDuplicate' || safeErrorType === 'listEmptyTitle' || safeErrorType === 'listInvalidAutoPlacement') { %>
       <div class="client-error-msg" style="margin-bottom: 12px;">
         <span>⚠️</span>
         <span><%= safeErrorMessage || '入力内容に問題があります。' %></span>
@@ -135,9 +148,9 @@
               </select>
             </form>
 
-            <div style="display: flex; align-items: center;">
+            <div class="todo-category-control">
               <form action="/todos/<%= todo.id %>/category" method="POST" id="catForm-<%= todo.id %>" style="display: flex; align-items: center;">
-                <select name="categoryId" class="inline-select <%= todo.isCompleted ? 'completed' : '' %>" onchange="handleInlineCategoryChange(this, '<%= todo.id %>')">
+                <select name="categoryId" class="inline-select todo-category-select <%= todo.isCompleted ? 'completed' : '' %>" title="<%= todo.category ? todo.category.name : '分類なし' %>" onchange="handleInlineCategoryChange(this, '<%= todo.id %>')">
                   <option value="指定なし" <%= !todo.categoryId ? 'selected' : '' %>>[分類なし ▾]</option>
                   <% categories.forEach(cat => { %>
                     <option value="<%= cat.id %>" <%= todo.categoryId === cat.id ? 'selected' : '' %>>[<%= cat.name %> ▾]</option>
@@ -150,7 +163,7 @@
               </form>
             </div>
 
-            <form action="/todos/<%= todo.id %>/update" method="POST" style="flex-grow: 1; display: flex; align-items: center;">
+            <form action="/todos/<%= todo.id %>/update" method="POST" class="todo-title-form" style="flex-grow: 1; display: flex; align-items: center;">
               <input type="text" name="title" class="inline-input-title <%= todo.isCompleted ? 'completed' : '' %>" value="<%= safeFormValues && safeFormValues['todo-' + todo.id + '-title'] !== undefined ? safeFormValues['todo-' + todo.id + '-title'] : todo.title %>" onchange="this.form.submit()" <%= todo.isCompleted ? 'disabled' : '' %>>
             </form>
 
@@ -161,9 +174,50 @@
               <input type="date" name="dueDate" class="inline-date <%= todo.isCompleted ? 'completed' : '' %>" value="<%= safeFormValues && safeFormValues['todo-' + todo.id + '-dueDate'] !== undefined ? safeFormValues['todo-' + todo.id + '-dueDate'] : dateString %>" onchange="this.form.submit()">
             </form>
 
+            <button
+              type="button"
+              class="auto-placement-summary"
+              aria-expanded="<%= safeAutoPlacementEditTodoId === todo.id ? 'true' : 'false' %>"
+              aria-controls="autoPlacementEditor-<%= todo.id %>"
+              title="自動配置用の詳細設定を編集"
+              onclick="toggleAutoPlacementEditor('<%= todo.id %>')"
+            >詳細設定</button>
+
             <form action="/todos/<%= todo.id %>/delete" method="POST" style="display: flex; align-items: center; margin-left: 4px;">
               <button type="submit" style="color: white; background-color: #e53e3e; border: none; padding: 4px 8px; border-radius: 4px; cursor: pointer; font-size: 0.85em;">削除</button>
             </form>
+
+            <div id="autoPlacementEditor-<%= todo.id %>" class="auto-placement-editor <%= safeAutoPlacementEditTodoId === todo.id ? '' : 'hidden' %>">
+              <form action="/todos/<%= todo.id %>/auto-placement" method="POST" class="auto-placement-editor-form">
+                <label>
+                  <span>見積時間</span>
+                  <span class="duration-input">
+                    <input type="number" name="estimatedHours" min="0.25" step="0.25" placeholder="未設定" value="<%= safeFormValues['todo-' + todo.id + '-estimatedHours'] !== undefined ? safeFormValues['todo-' + todo.id + '-estimatedHours'] : formatEstimatedHours(todo.estimatedMinutes) %>">
+                    <span>時間</span>
+                  </span>
+                </label>
+                <label>
+                  <span>分割</span>
+                  <select name="isSplittable" id="todoSplittable-<%= todo.id %>" onchange="updateSplitEstimateVisibility('todoSplittable-<%= todo.id %>', 'todoSplitHoursGroup-<%= todo.id %>', 'todoSplitHours-<%= todo.id %>')">
+                    <% const inlineSplittable = safeFormValues['todo-' + todo.id + '-isSplittable'] !== undefined ? safeFormValues['todo-' + todo.id + '-isSplittable'] === 'true' : todo.isSplittable; %>
+                    <option value="false" <%= !inlineSplittable ? 'selected' : '' %>>分割できない</option>
+                    <option value="true" <%= inlineSplittable ? 'selected' : '' %>>分割できる</option>
+                  </select>
+                </label>
+                <label id="todoSplitHoursGroup-<%= todo.id %>" class="<%= inlineSplittable ? '' : 'hidden' %>">
+                  <span>1回あたり</span>
+                  <span class="duration-input">
+                    <input type="number" name="splitHours" id="todoSplitHours-<%= todo.id %>" min="0.25" step="0.25" placeholder="例：1" value="<%= safeFormValues['todo-' + todo.id + '-splitHours'] !== undefined ? safeFormValues['todo-' + todo.id + '-splitHours'] : formatEstimatedHours(todo.splitMinutes) %>" <%= inlineSplittable ? 'required' : 'disabled' %>>
+                    <span>時間</span>
+                  </span>
+                </label>
+                <div class="auto-placement-editor-actions">
+                  <button type="submit" class="auto-placement-save-btn">保存</button>
+                  <button type="button" class="auto-placement-cancel-btn" onclick="cancelAutoPlacementEditor('<%= todo.id %>')">キャンセル</button>
+                  <button type="button" class="auto-placement-reset-btn" onclick="resetAutoPlacementEditor('<%= todo.id %>')">リセット</button>
+                </div>
+              </form>
+            </div>
           </li>
               <% }) %>
             </ul>
@@ -212,10 +266,48 @@
         </div>
       </div>
     </div>
+
+    <section class="auto-schedule-card" aria-labelledby="autoScheduleTitle">
+      <div class="auto-schedule-heading">
+        <div>
+          <h2 id="autoScheduleTitle">自動スケジュール</h2>
+          <p>タスク設定とユーザー設定から、期日までの空き時間を探します。</p>
+        </div>
+      </div>
+      <%
+        const autoScheduleCandidates = todos.filter(todo =>
+          !todo.isCompleted &&
+          todo.dueDate &&
+          todo.estimatedMinutes &&
+          todo.remainingEstimatedMinutes > 0 &&
+          (!todo.isSplittable || todo.splitMinutes)
+        );
+      %>
+      <div class="auto-schedule-controls">
+        <label for="autoScheduleTodoSelect">対象タスク</label>
+        <select id="autoScheduleTodoSelect" class="auto-schedule-select" onchange="resetAutoSchedulePreview()">
+          <option value="">対象タスクを選択</option>
+          <% autoScheduleCandidates.forEach(todo => { %>
+            <option value="<%= todo.id %>"><%= todo.title %>　⏱ 見積 <%= formatEstimatedHours(todo.estimatedMinutes) %>時間<% if (todo.isSplittable && todo.splitMinutes) { %> / <%= formatEstimatedHours(todo.splitMinutes) %>時間ずつ<% } %>・残り<%= formatEstimatedHours(todo.remainingEstimatedMinutes) %>時間</option>
+          <% }) %>
+        </select>
+        <button type="button" id="autoSchedulePreviewBtn" class="auto-schedule-run-btn" onclick="executeAutoSchedulePreview()" <%= autoScheduleCandidates.length === 0 ? 'disabled' : '' %>>自動配置を実行</button>
+      </div>
+      <p id="autoScheduleEmpty" class="auto-schedule-empty <%= autoScheduleCandidates.length === 0 ? '' : 'hidden' %>">見積時間と期日が設定された未完了タスクがありません。</p>
+      <div id="autoScheduleMessage" class="auto-schedule-message hidden" role="status" aria-live="polite"></div>
+      <div id="autoSchedulePreview" class="auto-schedule-preview hidden">
+        <h3>次の内容で自動配置します</h3>
+        <ul id="autoSchedulePreviewList"></ul>
+        <div class="auto-schedule-preview-actions">
+          <button type="button" class="auto-schedule-confirm-btn" onclick="confirmAutoSchedule()">確定</button>
+          <button type="button" class="auto-schedule-cancel-btn" onclick="cancelAutoSchedulePreview()">キャンセル</button>
+        </div>
+      </div>
+    </section>
   </div>
 
   <h2>タスクを追加する</h2>
-  <div id="validationErrorBox" class="client-error-msg <%= (safeErrorType === 'emptyTitle' || safeErrorType === 'duplicate') && safeErrorMessage ? '' : 'hidden' %>">
+  <div id="validationErrorBox" class="client-error-msg <%= (safeErrorType === 'emptyTitle' || safeErrorType === 'duplicate' || safeErrorType === 'invalidAutoPlacement') && safeErrorMessage ? '' : 'hidden' %>">
     <span>⚠️</span>
     <span><%= safeErrorMessage || 'タスク名を入力してくださいな。' %></span>
   </div>
@@ -247,6 +339,29 @@
               <option value="中" <%= (!safeFormValues || safeFormValues.priority === '中' || !safeFormValues.priority) ? 'selected' : '' %>>🟡 中</option>
               <option value="低" <%= safeFormValues && safeFormValues.priority === '低' ? 'selected' : '' %>>🟢 低</option>
             </select>
+          </div>
+        </div>
+        <div class="auto-placement-form-grid">
+          <div class="form-group">
+            <label>見積時間</label>
+            <span class="duration-input standard-duration-input">
+              <input type="number" name="estimatedHours" id="estimatedHoursField" min="0.25" step="0.25" class="standard-input" placeholder="未設定" value="<%= safeFormValues && safeFormValues.estimatedHours ? safeFormValues.estimatedHours : '' %>">
+              <span>時間</span>
+            </span>
+          </div>
+          <div class="form-group">
+            <label>分割できるか</label>
+            <select name="isSplittable" id="isSplittableField" class="standard-input" onchange="updateSplitEstimateVisibility('isSplittableField', 'splitHoursGroup', 'splitHoursField')">
+              <option value="false" <%= !safeFormValues || safeFormValues.isSplittable !== 'true' ? 'selected' : '' %>>分割できない</option>
+              <option value="true" <%= safeFormValues && safeFormValues.isSplittable === 'true' ? 'selected' : '' %>>分割できる</option>
+            </select>
+          </div>
+          <div id="splitHoursGroup" class="form-group <%= safeFormValues && safeFormValues.isSplittable === 'true' ? '' : 'hidden' %>">
+            <label>1回あたりの見積時間</label>
+            <span class="duration-input standard-duration-input">
+              <input type="number" name="splitHours" id="splitHoursField" min="0.25" step="0.25" class="standard-input" placeholder="例：1" value="<%= safeFormValues && safeFormValues.splitHours ? safeFormValues.splitHours : '' %>" <%= safeFormValues && safeFormValues.isSplittable === 'true' ? 'required' : 'disabled' %>>
+              <span>時間</span>
+            </span>
           </div>
         </div>
         <div class="form-group">
@@ -290,6 +405,9 @@
         dueDate: todo.dueDate ? todo.dueDate.toISOString() : null,
         priority: todo.priority,
         isCompleted: todo.isCompleted,
+        estimatedMinutes: todo.estimatedMinutes,
+        isSplittable: todo.isSplittable,
+        splitMinutes: todo.splitMinutes,
         schedules: (todo.schedules || []).map(schedule => ({
           id: schedule.id,
           scheduledStart: schedule.scheduledStart.toISOString(),

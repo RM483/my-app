@@ -3,6 +3,11 @@ import express from "express";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
+import { registerUserSettingsRoutes } from "./user-settings";
+import {
+  calculateRemainingMinutes,
+  registerAutoScheduleRoutes,
+} from "./auto-schedule";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -16,6 +21,12 @@ app.use(express.static("public"));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
+// タスク管理処理から独立したユーザー共通設定画面
+
+// 単一タスクの自動配置プレビューと確定
+registerAutoScheduleRoutes(app, prisma);
+registerUserSettingsRoutes(app, prisma);
+
 function getErrorMessage(errorType: string | undefined) {
   switch (errorType) {
     case "duplicate":
@@ -26,6 +37,10 @@ function getErrorMessage(errorType: string | undefined) {
       return "この内容は既に存在するため、変更できませんでした。";
     case "listEmptyTitle":
       return "タスク名を入力してください。";
+    case "invalidAutoPlacement":
+      return "自動配置用設定を確認してください。時間は正の数で入力し、1回あたりの時間は見積時間以下にしてください。";
+    case "listInvalidAutoPlacement":
+      return "自動配置用設定を保存できませんでした。1回あたりの時間は見積時間以下にしてください。";
     default:
       return null;
   }
@@ -49,6 +64,57 @@ function getDateInputValue(dateValue: Date | null) {
   return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
 }
 
+function getHoursInputValue(minutes: number | null | undefined) {
+  if (!minutes) return "";
+  return String(minutes / 60);
+}
+
+// 画面の「時間」入力を、自動配置処理で扱いやすい分単位へ正規化する
+function parseAutoPlacementSettings(body: Record<string, any>) {
+  const estimatedHoursValue = String(body.estimatedHours ?? "").trim();
+  if (estimatedHoursValue === "") {
+    return {
+      estimatedMinutes: null,
+      isSplittable: false,
+      splitMinutes: null,
+      error: null,
+    };
+  }
+
+  const estimatedHours = Number(estimatedHoursValue);
+  const estimatedMinutes = Math.round(estimatedHours * 60);
+  if (
+    !Number.isFinite(estimatedHours) ||
+    estimatedHours <= 0 ||
+    Math.abs(estimatedHours * 60 - estimatedMinutes) > 0.000001
+  ) {
+    return { error: "invalidEstimatedHours" };
+  }
+
+  const isSplittable = body.isSplittable === "true";
+  if (!isSplittable) {
+    return {
+      estimatedMinutes,
+      isSplittable: false,
+      splitMinutes: null,
+      error: null,
+    };
+  }
+
+  const splitHours = Number(String(body.splitHours ?? "").trim());
+  const splitMinutes = Math.round(splitHours * 60);
+  if (
+    !Number.isFinite(splitHours) ||
+    splitHours <= 0 ||
+    Math.abs(splitHours * 60 - splitMinutes) > 0.000001 ||
+    splitMinutes > estimatedMinutes
+  ) {
+    return { error: "invalidSplitHours" };
+  }
+
+  return { estimatedMinutes, isSplittable: true, splitMinutes, error: null };
+}
+
 function buildEmptyFormValues() {
   return {
     title: "",
@@ -58,6 +124,9 @@ function buildEmptyFormValues() {
     categoryId: "指定なし",
     newCategory: "",
     currentMode: "detail",
+    estimatedHours: "",
+    isSplittable: "false",
+    splitHours: "",
   };
 }
 
@@ -69,6 +138,12 @@ function buildFormValues(body: Record<string, any> = {}, currentTodo?: any) {
   const categoryIdValue = body.categoryId ?? "指定なし";
   const newCategoryValue = body.newCategory ?? "";
   const currentMode = body.titleSimple && !body.title ? "simple" : "detail";
+  const estimatedHoursValue =
+    body.estimatedHours ?? getHoursInputValue(currentTodo?.estimatedMinutes);
+  const isSplittableValue =
+    body.isSplittable ?? String(currentTodo?.isSplittable ?? false);
+  const splitHoursValue =
+    body.splitHours ?? getHoursInputValue(currentTodo?.splitMinutes);
 
   const values: Record<string, any> = {
     title: titleValue,
@@ -78,6 +153,9 @@ function buildFormValues(body: Record<string, any> = {}, currentTodo?: any) {
     categoryId: categoryIdValue,
     newCategory: newCategoryValue,
     currentMode,
+    estimatedHours: estimatedHoursValue,
+    isSplittable: isSplittableValue,
+    splitHours: splitHoursValue,
   };
 
   if (currentTodo) {
@@ -87,6 +165,12 @@ function buildFormValues(body: Record<string, any> = {}, currentTodo?: any) {
       body.dueDate ?? getDateInputValue(currentTodo.dueDate);
     values["todo-" + currentTodo.id + "-priority"] =
       body.priority ?? currentTodo.priority;
+    values["todo-" + currentTodo.id + "-estimatedHours"] =
+      estimatedHoursValue;
+    values["todo-" + currentTodo.id + "-isSplittable"] =
+      isSplittableValue;
+    values["todo-" + currentTodo.id + "-splitHours"] =
+      splitHoursValue;
   }
 
   return values;
@@ -100,6 +184,7 @@ async function renderIndexPage(
     formValues?: Record<string, any>;
     duplicateTodoId?: number | null;
     activeView?: string;
+    autoPlacementEditTodoId?: number | null;
   },
 ) {
   const activeCategories = await prisma.category.findMany({
@@ -124,10 +209,20 @@ async function renderIndexPage(
           orderBy: { scheduledStart: "asc" },
         })
       : [];
-  const todosWithSchedules = options.todos.map((todo) => ({
-    ...todo,
-    schedules: schedules.filter((schedule) => schedule.todoId === todo.id),
-  }));
+  const todosWithSchedules = options.todos.map((todo) => {
+    const todoSchedules = schedules.filter(
+      (schedule) => schedule.todoId === todo.id,
+    );
+    return {
+      ...todo,
+      schedules: todoSchedules,
+      // 候補表示も自動配置APIと同じ計算方法で残り時間を判定する
+      remainingEstimatedMinutes: calculateRemainingMinutes(
+        todo.estimatedMinutes,
+        todoSchedules,
+      ),
+    };
+  });
   const sortedTodos = [...todosWithSchedules].sort((a, b) => {
     if (a.isCompleted !== b.isCompleted) {
       return a.isCompleted ? 1 : -1;
@@ -157,6 +252,7 @@ async function renderIndexPage(
     formValues: options.formValues || {},
     duplicateTodoId: options.duplicateTodoId ?? null,
     initialView: activeView,
+    autoPlacementEditTodoId: options.autoPlacementEditTodoId ?? null,
   });
 }
 
@@ -193,6 +289,9 @@ app.post("/todos", async (req, res) => {
       priority,
       titleSimple,
       view,
+      estimatedHours,
+      isSplittable,
+      splitHours,
     } = req.body;
 
     const requestedView = normalizeView(view);
@@ -213,6 +312,21 @@ app.post("/todos", async (req, res) => {
     if (dueDate && dueDate.trim() !== "") {
       parsedDueDate = new Date(dueDate);
       parsedDueDate.setHours(0, 0, 0, 0);
+    }
+
+    const autoPlacementSettings = parseAutoPlacementSettings({
+      estimatedHours,
+      isSplittable,
+      splitHours,
+    });
+    if (autoPlacementSettings.error) {
+      const todos = await prisma.todo.findMany({ include: { category: true } });
+      return renderIndexPage(res, {
+        todos,
+        errorType: "invalidAutoPlacement",
+        formValues: buildFormValues(req.body),
+        activeView: requestedView,
+      });
     }
 
     // 重複防止チェック
@@ -268,6 +382,9 @@ app.post("/todos", async (req, res) => {
         dueDate: parsedDueDate,
         categoryId: targetCategoryId,
         priority: priority || "中",
+        estimatedMinutes: autoPlacementSettings.estimatedMinutes,
+        isSplittable: autoPlacementSettings.isSplittable,
+        splitMinutes: autoPlacementSettings.splitMinutes,
       },
     });
 
@@ -344,6 +461,43 @@ app.post("/todos/:id/update", async (req, res) => {
     res.redirect("/?view=list");
   } catch (error) {
     console.error("タスクの直接更新に失敗したぞよ:", error);
+    res.status(500).send("エラーが発生しました");
+  }
+});
+
+// 自動配置用設定だけを更新し、手動で配置したスケジュール時間には触れない
+app.post("/todos/:id/auto-placement", async (req, res) => {
+  try {
+    const todoId = Number(req.params.id);
+    const currentTodo = await prisma.todo.findUnique({
+      where: { id: todoId },
+    });
+    if (!currentTodo) return res.status(404).send("タスクが見つかりません");
+
+    const autoPlacementSettings = parseAutoPlacementSettings(req.body);
+    if (autoPlacementSettings.error) {
+      const todos = await prisma.todo.findMany({ include: { category: true } });
+      return renderIndexPage(res, {
+        todos,
+        errorType: "listInvalidAutoPlacement",
+        formValues: buildFormValues(req.body, currentTodo),
+        activeView: "list",
+        autoPlacementEditTodoId: todoId,
+      });
+    }
+
+    await prisma.todo.update({
+      where: { id: todoId },
+      data: {
+        estimatedMinutes: autoPlacementSettings.estimatedMinutes,
+        isSplittable: autoPlacementSettings.isSplittable,
+        splitMinutes: autoPlacementSettings.splitMinutes,
+      },
+    });
+
+    res.redirect("/?view=list");
+  } catch (error) {
+    console.error("自動配置用設定の更新に失敗したぞよ:", error);
     res.status(500).send("エラーが発生しました");
   }
 });
