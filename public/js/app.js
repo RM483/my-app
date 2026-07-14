@@ -997,6 +997,17 @@ function resetWholeForm() {
   document.getElementById("dueDateField").value = "";
   document.getElementById("newCategoryInput").value = "";
   document.getElementById("prioritySelect").value = "中";
+  const estimatedHoursField = document.getElementById("estimatedHoursField");
+  const isSplittableField = document.getElementById("isSplittableField");
+  const splitHoursField = document.getElementById("splitHoursField");
+  if (estimatedHoursField) estimatedHoursField.value = "";
+  if (isSplittableField) isSplittableField.value = "false";
+  if (splitHoursField) splitHoursField.value = "";
+  updateSplitEstimateVisibility(
+    "isSplittableField",
+    "splitHoursGroup",
+    "splitHoursField",
+  );
   const catSelect = document.getElementById("categorySelect");
   catSelect.value = "指定なし";
   handleCategoryChange();
@@ -1026,6 +1037,84 @@ function cancelInlineCategory(todoId) {
       inputForm.submit();
     }
   }, 200);
+}
+
+// 分割可否に応じて「1回あたり」の入力だけを切り替える
+function updateSplitEstimateVisibility(selectId, groupId, inputId) {
+  const select = document.getElementById(selectId);
+  const group = document.getElementById(groupId);
+  const input = document.getElementById(inputId);
+  if (!select || !group || !input) return;
+
+  const isSplittable = select.value === "true";
+  group.classList.toggle("hidden", !isSplittable);
+  input.disabled = !isSplittable;
+  input.required = isSplittable;
+}
+
+function toggleAutoPlacementEditor(todoId) {
+  const editorId = `autoPlacementEditor-${todoId}`;
+  const editor = document.getElementById(editorId);
+  if (!editor) return;
+
+  const willOpen = editor.classList.contains("hidden");
+  document.querySelectorAll(".auto-placement-editor").forEach((item) => {
+    item.classList.add("hidden");
+  });
+  document.querySelectorAll(".auto-placement-summary").forEach((button) => {
+    button.setAttribute("aria-expanded", "false");
+  });
+
+  if (willOpen) {
+    editor.classList.remove("hidden");
+    const button = document.querySelector(`[aria-controls="${editorId}"]`);
+    if (button) button.setAttribute("aria-expanded", "true");
+    const firstInput = editor.querySelector('input[name="estimatedHours"]');
+    if (firstInput) firstInput.focus();
+  }
+}
+
+function cancelAutoPlacementEditor(todoId) {
+  const editor = document.getElementById(`autoPlacementEditor-${todoId}`);
+  if (!editor) return;
+
+  const form = editor.querySelector("form");
+  if (form) {
+    form.reset();
+    updateSplitEstimateVisibility(
+      `todoSplittable-${todoId}`,
+      `todoSplitHoursGroup-${todoId}`,
+      `todoSplitHours-${todoId}`,
+    );
+  }
+  editor.classList.add("hidden");
+  const button = document.querySelector(
+    `[aria-controls="autoPlacementEditor-${todoId}"]`,
+  );
+  if (button) button.setAttribute("aria-expanded", "false");
+}
+
+// DBへ保存せず、この編集領域の入力値だけを初期設定へ戻す
+function resetAutoPlacementEditor(todoId) {
+  const editor = document.getElementById(`autoPlacementEditor-${todoId}`);
+  if (!editor) return;
+
+  const estimatedHours = editor.querySelector(
+    'input[name="estimatedHours"]',
+  );
+  const isSplittable = document.getElementById(`todoSplittable-${todoId}`);
+  const splitHours = document.getElementById(`todoSplitHours-${todoId}`);
+  if (!estimatedHours || !isSplittable || !splitHours) return;
+
+  estimatedHours.value = "";
+  isSplittable.value = "false";
+  splitHours.value = "";
+  updateSplitEstimateVisibility(
+    `todoSplittable-${todoId}`,
+    `todoSplitHoursGroup-${todoId}`,
+    `todoSplitHours-${todoId}`,
+  );
+  estimatedHours.focus();
 }
 
 // 💡 【機能維持】カテゴリ別フィルター＆キーワード爆速検索

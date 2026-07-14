@@ -24,6 +24,11 @@ model Todo {
   scheduledStart DateTime?
   scheduledEnd   DateTime?
 
+  // 自動配置専用の設定（手動で配置した実時間とは別に保持）
+  estimatedMinutes Int?
+  isSplittable     Boolean @default(false)
+  splitMinutes     Int?
+
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   categoryId  Int?      // 所属する分類の識別番号
   schedules   TodoSchedule[]
