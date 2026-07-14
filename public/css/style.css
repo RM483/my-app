@@ -1277,6 +1277,197 @@ h2 {
     margin-right: 0;
   }
 }
+
+/* 月間カレンダー上で配置日を確認するカード */
+.placement-inspector-card {
+  margin: 20px 0;
+  padding: 18px;
+  border: 1px solid #d9e2f0;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+}
+.placement-inspector-heading h2 {
+  margin: 0 0 5px;
+  font-size: 1.15rem;
+}
+.placement-inspector-heading p {
+  margin: 0;
+  color: #718096;
+  font-size: 0.84rem;
+}
+.placement-inspector-search-row {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr);
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+}
+.placement-inspector-search-row label {
+  color: #4a5568;
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+.placement-inspector-search-row input {
+  min-width: 0;
+  padding: 9px 11px;
+  border: 1px solid #cbd5e0;
+  border-radius: 7px;
+  background: #fff;
+}
+.placement-category-filters,
+.placement-selected-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 7px;
+  margin-top: 12px;
+}
+.placement-category-chip {
+  padding: 5px 11px;
+  border: 1px solid #c3dafe;
+  border-radius: 999px;
+  background: #f7f8ff;
+  color: #4c51bf;
+  cursor: pointer;
+  font-size: 0.78rem;
+}
+.placement-category-chip.active {
+  border-color: #667eea;
+  background: #667eea;
+  color: white;
+}
+.placement-selection-header {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: 15px;
+  padding-top: 12px;
+  border-top: 1px solid #edf2f7;
+  color: #4a5568;
+  font-size: 0.84rem;
+}
+.placement-clear-btn {
+  padding: 5px 10px;
+  border: 1px solid #cbd5e0;
+  border-radius: 7px;
+  background: white;
+  color: #4a5568;
+  cursor: pointer;
+  font-size: 0.76rem;
+}
+.placement-clear-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.5;
+}
+.placement-selected-chip {
+  display: inline-flex;
+  max-width: 240px;
+  gap: 6px;
+  align-items: center;
+  padding: 5px 9px;
+  border: 1px solid color-mix(in srgb, var(--placement-task-color) 35%, white);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--placement-task-color) 9%, white);
+  color: #2d3748;
+  cursor: pointer;
+}
+.placement-selected-chip-dot,
+.placement-task-choice-dot,
+.placement-date-marker-dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--placement-task-color);
+}
+.placement-selected-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.placement-task-choices {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 7px;
+  max-height: 250px;
+  margin-top: 12px;
+  padding-right: 4px;
+  overflow-y: auto;
+}
+.placement-task-choice {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, 1fr);
+  gap: 8px;
+  align-items: center;
+  padding: 9px 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 9px;
+  background: #f8fafc;
+  cursor: pointer;
+}
+.placement-task-choice:has(input:checked) {
+  border-color: color-mix(in srgb, var(--placement-task-color) 45%, white);
+  background: color-mix(in srgb, var(--placement-task-color) 7%, white);
+}
+.placement-task-choice input {
+  margin: 0;
+  accent-color: var(--placement-task-color);
+}
+.placement-task-choice-main {
+  min-width: 0;
+}
+.placement-task-choice-title,
+.placement-task-choice-meta {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.placement-task-choice-title {
+  color: #2d3748;
+  font-size: 0.84rem;
+  font-weight: bold;
+}
+.placement-task-choice-meta {
+  margin-top: 2px;
+  color: #718096;
+  font-size: 0.72rem;
+}
+.placement-task-empty {
+  margin: 12px 0 0;
+  color: #a0aec0;
+  font-size: 0.82rem;
+}
+.placement-date-markers {
+  display: grid;
+  gap: 2px;
+  margin: 2px 3px 0;
+  pointer-events: none;
+}
+.placement-date-marker {
+  display: flex;
+  min-width: 0;
+  gap: 5px;
+  align-items: center;
+  padding: 2px 5px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--placement-task-color) 10%, white);
+  color: #374151;
+  font-size: 0.68rem;
+}
+.placement-date-marker-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.placement-date-marker-more {
+  padding-left: 5px;
+  color: #718096;
+  font-size: 0.68rem;
+  font-weight: bold;
+}
+
 /* カレンダー画面の単一タスク自動スケジュール */
 .auto-schedule-card {
   margin: 20px 0;
@@ -1390,6 +1581,17 @@ h2 {
     grid-template-columns: 1fr;
   }
   .auto-schedule-run-btn {
+    width: 100%;
+  }
+  .placement-inspector-search-row,
+  .placement-task-choices {
+    grid-template-columns: 1fr;
+  }
+  .placement-selection-header {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+  .placement-clear-btn {
     width: 100%;
   }
 }

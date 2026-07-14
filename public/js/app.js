@@ -9,6 +9,19 @@ let draggedScheduleTaskId = null;
 let draggedScheduleId = null;
 let draggedScheduleDurationSlots = 2;
 let pendingAutoSchedulePreview = null;
+const selectedPlacementTaskIds = new Set();
+const placementTaskColors = new Map();
+let placementCategoryFilter = null;
+const placementMarkerPalette = [
+  "#5b6ee1",
+  "#805ad5",
+  "#3182ce",
+  "#319795",
+  "#d53f8c",
+  "#6b46c1",
+  "#2b6cb0",
+  "#4c51bf",
+];
 
 // 💡 【機能維持】画面の表示切り替えロジック
 function switchView(viewName) {
@@ -74,6 +87,227 @@ function normalizeDateKey(value) {
   const month = String(parsedDate.getMonth() + 1).padStart(2, "0");
   const day = String(parsedDate.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
+}
+
+function normalizeJapanDateKey(value) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  const parts = new Intl.DateTimeFormat("ja-JP", {
+    timeZone: "Asia/Tokyo",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(date);
+  const getPart = (type) => parts.find((part) => part.type === type)?.value;
+  return `${getPart("year")}-${getPart("month")}-${getPart("day")}`;
+}
+
+function getPlacedTaskCandidates() {
+  return (window.scheduleTasks || []).filter(
+    (todo) => (todo.schedules || []).length > 0,
+  );
+}
+
+function getPlacementTaskColor(taskId) {
+  const key = String(taskId);
+  if (!placementTaskColors.has(key)) {
+    placementTaskColors.set(
+      key,
+      placementMarkerPalette[placementTaskColors.size % placementMarkerPalette.length],
+    );
+  }
+  return placementTaskColors.get(key);
+}
+
+function setPlacementTaskSelected(taskId, selected) {
+  const key = String(taskId);
+  if (selected) selectedPlacementTaskIds.add(key);
+  else selectedPlacementTaskIds.delete(key);
+  renderPlacementTaskInspector();
+  renderPlacementMarkers();
+}
+
+function renderPlacementTaskInspector() {
+  const searchInput = document.getElementById("placementTaskSearch");
+  const categoryFilters = document.getElementById("placementCategoryFilters");
+  const selectedCount = document.getElementById("placementSelectedCount");
+  const selectedChips = document.getElementById("placementSelectedChips");
+  const choices = document.getElementById("placementTaskChoices");
+  const empty = document.getElementById("placementTaskEmpty");
+  const clearButton = document.getElementById("clearPlacementSelection");
+  if (
+    !searchInput ||
+    !categoryFilters ||
+    !selectedCount ||
+    !selectedChips ||
+    !choices ||
+    !empty ||
+    !clearButton
+  )
+    return;
+
+  const candidates = getPlacedTaskCandidates();
+  const candidateIds = new Set(candidates.map((todo) => String(todo.id)));
+  for (const taskId of selectedPlacementTaskIds) {
+    if (!candidateIds.has(taskId)) selectedPlacementTaskIds.delete(taskId);
+  }
+  candidates.forEach((todo) => getPlacementTaskColor(todo.id));
+
+  const categories = [
+    ...new Set(candidates.map((todo) => todo.categoryName || "分類なし")),
+  ].sort((a, b) => a.localeCompare(b, "ja"));
+  if (placementCategoryFilter && !categories.includes(placementCategoryFilter)) {
+    placementCategoryFilter = null;
+  }
+
+  categoryFilters.innerHTML = "";
+  const addCategoryButton = (value, label) => {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "placement-category-chip";
+    button.classList.toggle("active", placementCategoryFilter === value);
+    button.textContent = label;
+    button.addEventListener("click", () => {
+      placementCategoryFilter = value;
+      renderPlacementTaskInspector();
+    });
+    categoryFilters.appendChild(button);
+  };
+  addCategoryButton(null, "すべて");
+  categories.forEach((category) => addCategoryButton(category, category));
+
+  const searchWord = searchInput.value.trim().toLowerCase();
+  const filtered = candidates.filter((todo) => {
+    const categoryName = todo.categoryName || "分類なし";
+    return (
+      (!searchWord || todo.title.toLowerCase().includes(searchWord)) &&
+      (!placementCategoryFilter || categoryName === placementCategoryFilter)
+    );
+  });
+
+  choices.innerHTML = filtered
+    .map((todo) => {
+      const taskId = String(todo.id);
+      const dates = new Set(
+        (todo.schedules || [])
+          .map((schedule) => normalizeJapanDateKey(schedule.scheduledStart))
+          .filter(Boolean),
+      );
+      return `
+        <label class="placement-task-choice" style="--placement-task-color:${getPlacementTaskColor(taskId)}">
+          <input type="checkbox" value="${taskId}" ${selectedPlacementTaskIds.has(taskId) ? "checked" : ""}>
+          <span class="placement-task-choice-dot"></span>
+          <span class="placement-task-choice-main">
+            <span class="placement-task-choice-title" title="${escapeScheduleText(todo.title)}">${escapeScheduleText(todo.title)}</span>
+            <span class="placement-task-choice-meta">${escapeScheduleText(todo.categoryName || "分類なし")}・${dates.size}日 / ${(todo.schedules || []).length}件</span>
+          </span>
+        </label>
+      `;
+    })
+    .join("");
+  choices.querySelectorAll('input[type="checkbox"]').forEach((checkbox) => {
+    checkbox.addEventListener("change", () => {
+      setPlacementTaskSelected(checkbox.value, checkbox.checked);
+    });
+  });
+  empty.classList.toggle("hidden", filtered.length > 0);
+
+  const selectedTodos = candidates.filter((todo) =>
+    selectedPlacementTaskIds.has(String(todo.id)),
+  );
+  selectedCount.textContent = `${selectedTodos.length}件`;
+  clearButton.disabled = selectedTodos.length === 0;
+  selectedChips.innerHTML = selectedTodos
+    .map(
+      (todo) => `
+        <button type="button" class="placement-selected-chip" data-task-id="${todo.id}" title="${escapeScheduleText(todo.title)}" style="--placement-task-color:${getPlacementTaskColor(todo.id)}">
+          <span class="placement-selected-chip-dot"></span>
+          <span class="placement-selected-chip-label">${escapeScheduleText(todo.title)}</span>
+          <span aria-hidden="true">×</span>
+        </button>
+      `,
+    )
+    .join("");
+  selectedChips.querySelectorAll(".placement-selected-chip").forEach((chip) => {
+    chip.addEventListener("click", () => {
+      setPlacementTaskSelected(chip.dataset.taskId, false);
+    });
+  });
+}
+
+function renderPlacementMarkers() {
+  document
+    .querySelectorAll(".placement-date-markers")
+    .forEach((marker) => marker.remove());
+  if (!calendar || selectedPlacementTaskIds.size === 0) return;
+
+  const markersByDate = new Map();
+  getPlacedTaskCandidates()
+    .filter((todo) => selectedPlacementTaskIds.has(String(todo.id)))
+    .forEach((todo) => {
+      const taskDates = new Set(
+        (todo.schedules || [])
+          .map((schedule) => normalizeJapanDateKey(schedule.scheduledStart))
+          .filter(Boolean),
+      );
+      taskDates.forEach((dateKey) => {
+        if (!markersByDate.has(dateKey)) markersByDate.set(dateKey, []);
+        markersByDate.get(dateKey).push({
+          title: todo.title,
+          color: getPlacementTaskColor(todo.id),
+        });
+      });
+    });
+
+  markersByDate.forEach((markers, dateKey) => {
+    const cell = document.querySelector(
+      `#calendar .fc-daygrid-day[data-date="${dateKey}"]`,
+    );
+    const target = cell?.querySelector(".fc-daygrid-day-events");
+    if (!target) return;
+    const container = document.createElement("div");
+    container.className = "placement-date-markers";
+    markers.slice(0, 2).forEach((marker) => {
+      const item = document.createElement("div");
+      item.className = "placement-date-marker";
+      item.title = marker.title;
+      item.style.setProperty("--placement-task-color", marker.color);
+      const dot = document.createElement("span");
+      dot.className = "placement-date-marker-dot";
+      const label = document.createElement("span");
+      label.className = "placement-date-marker-label";
+      label.textContent = marker.title;
+      item.append(dot, label);
+      container.appendChild(item);
+    });
+    if (markers.length > 2) {
+      const more = document.createElement("div");
+      more.className = "placement-date-marker-more";
+      more.textContent = `＋${markers.length - 2}件`;
+      container.appendChild(more);
+    }
+    target.appendChild(container);
+  });
+}
+
+function refreshPlacementTaskInspector() {
+  renderPlacementTaskInspector();
+  renderPlacementMarkers();
+}
+
+function initializePlacementTaskInspector() {
+  const searchInput = document.getElementById("placementTaskSearch");
+  const clearButton = document.getElementById("clearPlacementSelection");
+  if (!searchInput || !clearButton) return;
+  if (searchInput.dataset.placementInspectorReady !== "true") {
+    searchInput.dataset.placementInspectorReady = "true";
+    searchInput.addEventListener("input", renderPlacementTaskInspector);
+    clearButton.addEventListener("click", () => {
+      selectedPlacementTaskIds.clear();
+      refreshPlacementTaskInspector();
+    });
+  }
+  refreshPlacementTaskInspector();
 }
 
 function buildFilterChips(tasks, filterType) {
@@ -338,6 +572,7 @@ function refreshScheduleViews() {
   }
 
   refreshAutoScheduleCandidates();
+  refreshPlacementTaskInspector();
 }
 
 function formatAutoScheduleHours(minutes) {
