@@ -11,7 +11,10 @@ let draggedScheduleDurationSlots = 2;
 let pendingAutoSchedulePreview = null;
 const selectedPlacementTaskIds = new Set();
 const placementTaskColors = new Map();
-let placementCategoryFilter = null;
+// 配置確認の分類は複数選択できるよう、手動選択と検索中の一時解除を分けて管理する。
+const manualPlacementCategoryFilters = new Set();
+const suppressedSearchPlacementCategories = new Set();
+let placementSearchWasActive = false;
 const placementMarkerPalette = [
   "#5b6ee1",
   "#805ad5",
@@ -156,19 +159,90 @@ function renderPlacementTaskInspector() {
   const categories = [
     ...new Set(candidates.map((todo) => todo.categoryName || "分類なし")),
   ].sort((a, b) => a.localeCompare(b, "ja"));
-  if (placementCategoryFilter && !categories.includes(placementCategoryFilter)) {
-    placementCategoryFilter = null;
+
+  // 配置がなくなった分類は、保持中のフィルターからも取り除く。
+  for (const categoryName of manualPlacementCategoryFilters) {
+    if (!categories.includes(categoryName)) {
+      manualPlacementCategoryFilters.delete(categoryName);
+    }
   }
+  for (const categoryName of suppressedSearchPlacementCategories) {
+    if (!categories.includes(categoryName)) {
+      suppressedSearchPlacementCategories.delete(categoryName);
+    }
+  }
+
+  const searchWord = searchInput.value.trim().toLocaleLowerCase("ja");
+  const isSearchActive = searchWord.length > 0;
+  if (!isSearchActive && placementSearchWasActive) {
+    // 検索中だけ使った一時的な解除状態は、検索終了時に破棄する。
+    suppressedSearchPlacementCategories.clear();
+  }
+  placementSearchWasActive = isSearchActive;
+
+  const titleMatchedTasks = isSearchActive
+    ? candidates.filter((todo) =>
+        String(todo.title || "").toLocaleLowerCase("ja").includes(searchWord),
+      )
+    : [];
+  const searchMatchedCategories = new Set(
+    titleMatchedTasks.map((todo) => todo.categoryName || "分類なし"),
+  );
+  for (const categoryName of suppressedSearchPlacementCategories) {
+    if (!searchMatchedCategories.has(categoryName)) {
+      suppressedSearchPlacementCategories.delete(categoryName);
+    }
+  }
+
+  // 検索中は一致タスクの分類を自動点灯し、手動選択は別に保持する。
+  const activeCategories = new Set(manualPlacementCategoryFilters);
+  if (isSearchActive) {
+    for (const categoryName of searchMatchedCategories) {
+      if (!suppressedSearchPlacementCategories.has(categoryName)) {
+        activeCategories.add(categoryName);
+      }
+    }
+  }
+  const areAllCategoriesSelected =
+    categories.length > 0 &&
+    categories.every((categoryName) => activeCategories.has(categoryName));
 
   categoryFilters.innerHTML = "";
   const addCategoryButton = (value, label) => {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "placement-category-chip";
-    button.classList.toggle("active", placementCategoryFilter === value);
+    const isActive =
+      value === null
+        ? areAllCategoriesSelected
+        : activeCategories.has(value);
+    button.classList.toggle("active", isActive);
     button.textContent = label;
     button.addEventListener("click", () => {
-      placementCategoryFilter = value;
+      if (value === null) {
+        if (areAllCategoriesSelected) {
+          manualPlacementCategoryFilters.clear();
+          suppressedSearchPlacementCategories.clear();
+          if (isSearchActive) {
+            for (const categoryName of searchMatchedCategories) {
+              suppressedSearchPlacementCategories.add(categoryName);
+            }
+          }
+        } else {
+          for (const categoryName of categories) {
+            manualPlacementCategoryFilters.add(categoryName);
+          }
+          suppressedSearchPlacementCategories.clear();
+        }
+      } else if (activeCategories.has(value)) {
+        manualPlacementCategoryFilters.delete(value);
+        if (isSearchActive && searchMatchedCategories.has(value)) {
+          suppressedSearchPlacementCategories.add(value);
+        }
+      } else {
+        manualPlacementCategoryFilters.add(value);
+        suppressedSearchPlacementCategories.delete(value);
+      }
       renderPlacementTaskInspector();
     });
     categoryFilters.appendChild(button);
@@ -176,13 +250,12 @@ function renderPlacementTaskInspector() {
   addCategoryButton(null, "すべて");
   categories.forEach((category) => addCategoryButton(category, category));
 
-  const searchWord = searchInput.value.trim().toLowerCase();
   const filtered = candidates.filter((todo) => {
     const categoryName = todo.categoryName || "分類なし";
-    return (
-      (!searchWord || todo.title.toLowerCase().includes(searchWord)) &&
-      (!placementCategoryFilter || categoryName === placementCategoryFilter)
-    );
+    const matchesSearch =
+      !isSearchActive ||
+      String(todo.title || "").toLocaleLowerCase("ja").includes(searchWord);
+    return matchesSearch && activeCategories.has(categoryName);
   });
 
   choices.innerHTML = filtered
