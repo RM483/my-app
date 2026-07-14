@@ -1201,6 +1201,20 @@ h2 {
   border-top: 1px solid #e2e8f0;
   background: #f8fafc;
 }
+.settings-reset-btn {
+  margin-right: auto;
+  padding: 10px 16px;
+  border: 1px solid #c3dafe;
+  border-radius: 7px;
+  background: white;
+  color: #4c51bf;
+  cursor: pointer;
+  font-weight: bold;
+}
+.settings-reset-btn:hover {
+  border-color: #667eea;
+  background: #eef2ff;
+}
 .settings-save-btn {
   padding: 10px 22px;
   border: 0;
@@ -1258,5 +1272,124 @@ h2 {
   .settings-form-actions {
     align-items: stretch;
     flex-direction: column;
+  }
+  .settings-reset-btn {
+    margin-right: 0;
+  }
+}
+/* カレンダー画面の単一タスク自動スケジュール */
+.auto-schedule-card {
+  margin: 20px 0;
+  padding: 18px;
+  border: 1px solid #d9e2f0;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.06);
+}
+.auto-schedule-heading h2 {
+  margin: 0 0 5px;
+  font-size: 1.15rem;
+}
+.auto-schedule-heading p {
+  margin: 0;
+  color: #718096;
+  font-size: 0.84rem;
+}
+.auto-schedule-controls {
+  display: grid;
+  grid-template-columns: auto minmax(220px, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  margin-top: 14px;
+}
+.auto-schedule-controls label {
+  color: #4a5568;
+  font-size: 0.85rem;
+  font-weight: bold;
+}
+.auto-schedule-select {
+  width: 100%;
+  min-width: 0;
+  padding: 9px 10px;
+  border: 1px solid #cbd5e0;
+  border-radius: 7px;
+  background: white;
+  color: #2d3748;
+}
+.auto-schedule-run-btn,
+.auto-schedule-confirm-btn,
+.auto-schedule-cancel-btn {
+  padding: 9px 14px;
+  border-radius: 7px;
+  cursor: pointer;
+  font-weight: bold;
+}
+.auto-schedule-run-btn,
+.auto-schedule-confirm-btn {
+  border: 1px solid #5a67d8;
+  background: #5a67d8;
+  color: white;
+}
+.auto-schedule-run-btn:disabled,
+.auto-schedule-confirm-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.55;
+}
+.auto-schedule-cancel-btn {
+  border: 1px solid #cbd5e0;
+  background: white;
+  color: #4a5568;
+}
+.auto-schedule-empty {
+  margin: 12px 0 0;
+  color: #a0aec0;
+  font-size: 0.82rem;
+}
+.auto-schedule-message {
+  margin-top: 12px;
+  padding: 9px 11px;
+  border: 1px solid #9ae6b4;
+  border-radius: 7px;
+  background: #f0fff4;
+  color: #276749;
+  font-size: 0.85rem;
+}
+.auto-schedule-message.error {
+  border-color: #feb2b2;
+  background: #fff5f5;
+  color: #c53030;
+}
+.auto-schedule-preview {
+  margin-top: 12px;
+  padding: 14px;
+  border: 1px solid #c3dafe;
+  border-radius: 9px;
+  background: #f7f8ff;
+}
+.auto-schedule-preview h3 {
+  margin: 0 0 9px;
+  color: #3c366b;
+  font-size: 0.95rem;
+}
+.auto-schedule-preview ul {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding-left: 22px;
+  color: #4a5568;
+}
+.auto-schedule-preview-actions {
+  display: flex;
+  gap: 8px;
+  justify-content: flex-end;
+  margin-top: 13px;
+}
+
+@media (max-width: 700px) {
+  .auto-schedule-controls {
+    grid-template-columns: 1fr;
+  }
+  .auto-schedule-run-btn {
+    width: 100%;
   }
 }

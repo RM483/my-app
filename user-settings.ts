@@ -2,15 +2,23 @@ import type express from "express";
 import type { PrismaClient } from "./generated/prisma/client";
 
 const DEFAULT_USER_KEY = "default";
-const DAY_DEFINITIONS = [
-  { weekday: 1, name: "月曜日", isEnabled: true, ranges: [[1080, 1320]] },
-  { weekday: 2, name: "火曜日", isEnabled: true, ranges: [[1080, 1320]] },
-  { weekday: 3, name: "水曜日", isEnabled: false, ranges: [] },
-  { weekday: 4, name: "木曜日", isEnabled: true, ranges: [[540, 720]] },
-  { weekday: 5, name: "金曜日", isEnabled: true, ranges: [[1080, 1320]] },
-  { weekday: 6, name: "土曜日", isEnabled: true, ranges: [[540, 1200]] },
-  { weekday: 7, name: "日曜日", isEnabled: false, ranges: [] },
-] as const;
+type DefaultDayDefinition = {
+  weekday: number;
+  name: string;
+  isEnabled: boolean;
+  ranges: ReadonlyArray<readonly [number, number]>;
+};
+
+// 初期設定は全曜日を許可し、時間帯は未入力にする
+const DAY_DEFINITIONS: ReadonlyArray<DefaultDayDefinition> = [
+  { weekday: 1, name: "月曜日", isEnabled: true, ranges: [] },
+  { weekday: 2, name: "火曜日", isEnabled: true, ranges: [] },
+  { weekday: 3, name: "水曜日", isEnabled: true, ranges: [] },
+  { weekday: 4, name: "木曜日", isEnabled: true, ranges: [] },
+  { weekday: 5, name: "金曜日", isEnabled: true, ranges: [] },
+  { weekday: 6, name: "土曜日", isEnabled: true, ranges: [] },
+  { weekday: 7, name: "日曜日", isEnabled: true, ranges: [] },
+];
 
 type SettingsDayView = {
   weekday: number;
@@ -43,7 +51,7 @@ function toStringArray(value: unknown) {
   return [String(value)];
 }
 
-async function ensureDefaultUserSettings(prisma: PrismaClient) {
+export async function ensureDefaultUserSettings(prisma: PrismaClient) {
   const existing = await prisma.userSetting.findUnique({
     where: { userKey: DEFAULT_USER_KEY },
     include: {
@@ -55,7 +63,7 @@ async function ensureDefaultUserSettings(prisma: PrismaClient) {
   });
   if (existing) return existing;
 
-  // 初回だけ、画面例に沿った曜日設定を作成する
+  // 初回だけ、全曜日許可・時間帯未入力の初期設定を作成する
   return prisma.userSetting.create({
     data: {
       userKey: DEFAULT_USER_KEY,
@@ -173,10 +181,43 @@ export function registerUserSettingsRoutes(
         days: buildSettingsView(settings),
         errors: [],
         saved: req.query.saved === "1",
+        reset: req.query.reset === "1",
       });
     } catch (error) {
       console.error("ユーザー設定の取得に失敗したぞよ:", error);
       res.status(500).send("設定の取得中にエラーが発生しました");
+    }
+  });
+
+  app.post("/settings/reset", async (_req, res) => {
+    try {
+      const settings = await ensureDefaultUserSettings(prisma);
+      // 保存済み時間帯を削除し、全曜日を許可状態へ戻す
+      await prisma.$transaction(async (transaction) => {
+        for (const definition of DAY_DEFINITIONS) {
+          const day = await transaction.autoPlacementDay.upsert({
+            where: {
+              userSettingId_weekday: {
+                userSettingId: settings.id,
+                weekday: definition.weekday,
+              },
+            },
+            update: { isEnabled: true },
+            create: {
+              userSettingId: settings.id,
+              weekday: definition.weekday,
+              isEnabled: true,
+            },
+          });
+          await transaction.autoPlacementTimeRange.deleteMany({
+            where: { dayId: day.id },
+          });
+        }
+      });
+      res.redirect("/settings?reset=1");
+    } catch (error) {
+      console.error("ユーザー設定のリセットに失敗したぞよ:", error);
+      res.status(500).send("設定のリセット中にエラーが発生しました");
     }
   });
 
@@ -188,6 +229,7 @@ export function registerUserSettingsRoutes(
           days: viewDays,
           errors,
           saved: false,
+          reset: false,
         });
       }
 

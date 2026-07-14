@@ -266,6 +266,45 @@
         </div>
       </div>
     </div>
+
+    <section class="auto-schedule-card" aria-labelledby="autoScheduleTitle">
+      <div class="auto-schedule-heading">
+        <div>
+          <h2 id="autoScheduleTitle">自動スケジュール</h2>
+          <p>タスク設定とユーザー設定から、期日までの空き時間を探します。</p>
+        </div>
+      </div>
+      <%
+        const autoScheduleCandidates = todos.filter(todo =>
+          !todo.isCompleted &&
+          todo.dueDate &&
+          todo.estimatedMinutes &&
+          (!todo.isSplittable || todo.splitMinutes)
+        );
+      %>
+      <div class="auto-schedule-controls">
+        <label for="autoScheduleTodoSelect">対象タスク</label>
+        <select id="autoScheduleTodoSelect" class="auto-schedule-select" onchange="resetAutoSchedulePreview()">
+          <option value="">対象タスクを選択</option>
+          <% autoScheduleCandidates.forEach(todo => { %>
+            <option value="<%= todo.id %>"><%= todo.title %>　⏱ 見積 <%= formatEstimatedHours(todo.estimatedMinutes) %>時間<% if (todo.isSplittable && todo.splitMinutes) { %> / <%= formatEstimatedHours(todo.splitMinutes) %>時間ずつ<% } %></option>
+          <% }) %>
+        </select>
+        <button type="button" id="autoSchedulePreviewBtn" class="auto-schedule-run-btn" onclick="executeAutoSchedulePreview()" <%= autoScheduleCandidates.length === 0 ? 'disabled' : '' %>>自動配置を実行</button>
+      </div>
+      <% if (autoScheduleCandidates.length === 0) { %>
+        <p class="auto-schedule-empty">見積時間と期日が設定された未完了タスクがありません。</p>
+      <% } %>
+      <div id="autoScheduleMessage" class="auto-schedule-message hidden" role="status" aria-live="polite"></div>
+      <div id="autoSchedulePreview" class="auto-schedule-preview hidden">
+        <h3>次の内容で自動配置します</h3>
+        <ul id="autoSchedulePreviewList"></ul>
+        <div class="auto-schedule-preview-actions">
+          <button type="button" class="auto-schedule-confirm-btn" onclick="confirmAutoSchedule()">確定</button>
+          <button type="button" class="auto-schedule-cancel-btn" onclick="cancelAutoSchedulePreview()">キャンセル</button>
+        </div>
+      </div>
+    </section>
   </div>
 
   <h2>タスクを追加する</h2>

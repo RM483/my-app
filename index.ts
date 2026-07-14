@@ -4,6 +4,7 @@ import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
 import { registerUserSettingsRoutes } from "./user-settings";
+import { registerAutoScheduleRoutes } from "./auto-schedule";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -18,6 +19,9 @@ app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
 
 // タスク管理処理から独立したユーザー共通設定画面
+
+// 単一タスクの自動配置プレビューと確定
+registerAutoScheduleRoutes(app, prisma);
 registerUserSettingsRoutes(app, prisma);
 
 function getErrorMessage(errorType: string | undefined) {

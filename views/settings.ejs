@@ -19,6 +19,8 @@
 
     <% if (saved) { %>
       <div class="settings-success-message" role="status">設定を保存しました。</div>
+    <% } else if (reset) { %>
+      <div class="settings-success-message" role="status">設定を初期状態へ戻しました。</div>
     <% } %>
     <% if (errors.length > 0) { %>
       <div class="settings-error-message" role="alert">
@@ -85,6 +87,7 @@
         </div>
 
         <div class="settings-form-actions">
+          <button type="submit" formmethod="POST" formaction="/settings/reset" formnovalidate class="settings-reset-btn">設定をリセット</button>
           <button type="submit" class="settings-save-btn">設定を保存</button>
           <a href="/" class="settings-cancel-link">タスク管理へ戻る</a>
         </div>

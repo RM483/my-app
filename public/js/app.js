@@ -8,6 +8,7 @@ let currentScheduleDate = null;
 let draggedScheduleTaskId = null;
 let draggedScheduleId = null;
 let draggedScheduleDurationSlots = 2;
+let pendingAutoSchedulePreview = null;
 
 // 💡 【機能維持】画面の表示切り替えロジック
 function switchView(viewName) {
@@ -915,6 +916,108 @@ function analyzeSimpleTaskInput() {
     "解析結果を詳細入力へ反映しました。内容を確認・修正してから「タスクを追加」を押してください。",
   );
   return true;
+}
+
+function showAutoScheduleMessage(message, isError = false) {
+  const messageBox = document.getElementById("autoScheduleMessage");
+  if (!messageBox) return;
+  messageBox.textContent = message;
+  messageBox.classList.remove("hidden");
+  messageBox.classList.toggle("error", isError);
+}
+
+function resetAutoSchedulePreview() {
+  pendingAutoSchedulePreview = null;
+  const preview = document.getElementById("autoSchedulePreview");
+  const list = document.getElementById("autoSchedulePreviewList");
+  const messageBox = document.getElementById("autoScheduleMessage");
+  if (preview) preview.classList.add("hidden");
+  if (list) list.innerHTML = "";
+  if (messageBox) messageBox.classList.add("hidden");
+}
+
+async function executeAutoSchedulePreview() {
+  const select = document.getElementById("autoScheduleTodoSelect");
+  const runButton = document.getElementById("autoSchedulePreviewBtn");
+  const todoId = select?.value;
+  if (!todoId) {
+    showAutoScheduleMessage("対象タスクを選択してください。", true);
+    return;
+  }
+
+  resetAutoSchedulePreview();
+  if (runButton) runButton.disabled = true;
+  try {
+    const response = await fetch(`/todos/${todoId}/auto-schedule/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}",
+    });
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || "自動配置のプレビューを作成できませんでした");
+    }
+
+    pendingAutoSchedulePreview = result;
+    const preview = document.getElementById("autoSchedulePreview");
+    const list = document.getElementById("autoSchedulePreviewList");
+    if (list) {
+      list.innerHTML = "";
+      result.placements.forEach((placement) => {
+        const item = document.createElement("li");
+        item.textContent = placement.label;
+        list.appendChild(item);
+      });
+    }
+    if (preview) preview.classList.remove("hidden");
+    showAutoScheduleMessage(
+      `${result.todoTitle} の配置候補を作成しました。確定するまで保存されません。`,
+    );
+  } catch (error) {
+    showAutoScheduleMessage(error.message, true);
+  } finally {
+    if (runButton) runButton.disabled = false;
+  }
+}
+
+async function confirmAutoSchedule() {
+  if (!pendingAutoSchedulePreview) return;
+
+  const confirmButton = document.querySelector(".auto-schedule-confirm-btn");
+  if (confirmButton) confirmButton.disabled = true;
+  try {
+    const response = await fetch(
+      `/todos/${pendingAutoSchedulePreview.todoId}/auto-schedule/confirm`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          placements: pendingAutoSchedulePreview.placements.map(
+            ({ scheduledStart, scheduledEnd }) => ({
+              scheduledStart,
+              scheduledEnd,
+            }),
+          ),
+        }),
+      },
+    );
+    const result = await response.json();
+    if (!response.ok) {
+      throw new Error(result.error || "自動配置を確定できませんでした");
+    }
+
+    pendingAutoSchedulePreview = null;
+    showAutoScheduleMessage("自動配置を保存しました。");
+    window.location.reload();
+  } catch (error) {
+    showAutoScheduleMessage(error.message, true);
+    if (confirmButton) confirmButton.disabled = false;
+  }
+}
+
+function cancelAutoSchedulePreview() {
+  resetAutoSchedulePreview();
+  showAutoScheduleMessage("自動配置のプレビューをキャンセルしました。");
 }
 
 function closeDaySchedule() {
