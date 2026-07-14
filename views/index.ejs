@@ -24,7 +24,10 @@
         : hours.toFixed(2).replace(/0+$/, '').replace(/\.$/, '');
     };
   %>
-  <h1>タスク管理システム</h1>
+  <header class="app-page-header">
+    <h1>タスク管理システム</h1>
+    <a href="/settings" class="user-settings-link">⚙ ユーザー設定</a>
+  </header>
 
   <div class="view-switcher">
     <button type="button" id="todayScheduleViewBtn" class="switch-btn active" onclick="switchView('today')">🕒 今日のスケジュール</button>

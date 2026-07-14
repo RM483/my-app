@@ -3,6 +3,7 @@ import express from "express";
 import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
+import { registerUserSettingsRoutes } from "./user-settings";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -15,6 +16,9 @@ app.set("views", "./views");
 app.use(express.static("public"));
 app.use(express.urlencoded({ extended: true }));
 app.use(express.json());
+
+// タスク管理処理から独立したユーザー共通設定画面
+registerUserSettingsRoutes(app, prisma);
 
 function getErrorMessage(errorType: string | undefined) {
   switch (errorType) {

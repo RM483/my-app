@@ -56,3 +56,40 @@ model TodoSchedule {
   @@unique([todoId, scheduledStart, scheduledEnd])
   @@index([scheduledStart])
 }
+
+// ユーザー共通設定。現在は userKey="default" の1件だけを使用する
+model UserSetting {
+  id      Int    @id @default(autoincrement())
+  userKey String @unique
+
+  autoPlacementDays AutoPlacementDay[]
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+}
+
+// 曜日ごとの自動配置許可設定（weekday: 1=月曜日 ... 7=日曜日）
+model AutoPlacementDay {
+  id            Int     @id @default(autoincrement())
+  userSettingId Int
+  weekday       Int
+  isEnabled     Boolean @default(false)
+
+  userSetting UserSetting             @relation(fields: [userSettingId], references: [id], onDelete: Cascade)
+  timeRanges  AutoPlacementTimeRange[]
+
+  @@unique([userSettingId, weekday])
+  @@index([userSettingId])
+}
+
+// 1曜日に複数設定できる自動配置許可時間帯
+model AutoPlacementTimeRange {
+  id          Int @id @default(autoincrement())
+  dayId       Int
+  startMinute Int
+  endMinute   Int
+
+  day AutoPlacementDay @relation(fields: [dayId], references: [id], onDelete: Cascade)
+
+  @@index([dayId])
+}
