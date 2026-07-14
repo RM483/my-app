@@ -41,6 +41,41 @@ h2 {
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
+.today-schedule-card {
+  margin-bottom: 20px;
+  padding: 18px;
+  border: 1px solid #d9e2f0;
+  border-radius: 12px;
+  background: white;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.08);
+}
+.today-schedule-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 12px;
+}
+.today-schedule-header h2 {
+  margin: 0 0 4px;
+  font-size: 1.2rem;
+}
+.today-schedule-header p {
+  margin: 0;
+  color: #718096;
+  font-size: 0.9rem;
+}
+.today-schedule-guide {
+  color: #718096;
+  font-size: 0.78rem;
+  text-align: right;
+}
+.today-schedule-timeline {
+  max-height: 520px;
+  overflow-y: auto;
+  border-radius: 10px;
+}
+
 /* カレンダーコンテナ */
 .calendar-container {
   background: white;
@@ -85,18 +120,20 @@ h2 {
   font-size: 1.1rem;
   cursor: pointer;
 }
-.day-schedule-header {
-  margin-right: 36px;
-  margin-bottom: 12px;
+.day-schedule-sidebar-date {
+  margin-bottom: 14px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid #e2e8f0;
 }
-.day-schedule-header h3 {
+.day-schedule-sidebar-date h3 {
   margin: 0 0 4px;
   color: #2d3748;
+  font-size: 1rem;
 }
-.day-schedule-header p {
+.day-schedule-sidebar-date p {
   margin: 0;
   color: #718096;
-  font-size: 0.9rem;
+  font-size: 0.82rem;
 }
 .day-schedule-body {
   display: grid;
@@ -105,6 +142,11 @@ h2 {
   align-items: start;
 }
 .day-schedule-sidebar {
+  position: sticky;
+  top: 12px;
+  max-height: calc(100vh - 96px);
+  overflow-y: auto;
+  scrollbar-gutter: stable;
   background: #f8fafc;
   border: 1px solid #e2e8f0;
   border-radius: 12px;
@@ -380,12 +422,62 @@ h2 {
   background: white;
   border: 1px solid #e2e8f0;
   border-radius: 8px;
-  max-height: 400px;
-  overflow-y: auto;
+  max-height: 520px;
+  overflow: auto;
   padding: 10px;
   box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
 }
+.todo-category-board {
+  display: flex;
+  align-items: flex-start;
+  gap: 14px;
+  min-width: max-content;
+}
+.todo-category-column {
+  flex: 0 0 min(720px, calc(100vw - 88px));
+  overflow: hidden;
+  border: 1px solid #e2e8f0;
+  border-radius: 10px;
+  background: #f8fafc;
+}
+.todo-category-column-header {
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #e2e8f0;
+  background: #edf2f7;
+}
+.todo-category-column-header h3 {
+  margin: 0;
+  color: #2d3748;
+  font-size: 0.95rem;
+}
+.todo-category-count {
+  flex: 0 0 auto;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: white;
+  color: #4a5568;
+  font-size: 0.78rem;
+  font-weight: bold;
+}
+.todo-category-task-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.todo-filter-empty {
+  margin: 18px 0;
+  color: #718096;
+  text-align: center;
+}
 .todo-item {
+  background: white;
   padding: 10px 8px;
   border-bottom: 1px solid #edf2f7;
   display: flex;
@@ -509,6 +601,34 @@ h2 {
   box-sizing: border-box;
   resize: none;
   font-size: 1em;
+}
+.task-analysis-btn {
+  width: 100%;
+  margin-top: 8px;
+  padding: 9px 12px;
+  border: 1px solid #4c51bf;
+  border-radius: 6px;
+  background: #eef2ff;
+  color: #4c51bf;
+  font-weight: bold;
+  cursor: pointer;
+}
+.task-analysis-btn:hover {
+  background: #e0e7ff;
+}
+.task-analysis-message {
+  margin-top: 12px;
+  padding: 9px 10px;
+  border: 1px solid #9ae6b4;
+  border-radius: 6px;
+  background: #f0fff4;
+  color: #276749;
+  font-size: 0.88rem;
+}
+.task-analysis-message.error {
+  border-color: #feb2b2;
+  background: #fff5f5;
+  color: #c53030;
 }
 .form-group {
   margin-bottom: 10px;

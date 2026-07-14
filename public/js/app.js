@@ -3,7 +3,7 @@
 // グローバルで管理するカレンダーインスタンス
 let calendar = null;
 let currentMode = "detail";
-let currentView = "list";
+let currentView = "today";
 let currentScheduleDate = null;
 let draggedScheduleTaskId = null;
 let draggedScheduleId = null;
@@ -11,27 +11,35 @@ let draggedScheduleDurationSlots = 2;
 
 // 💡 【機能維持】画面の表示切り替えロジック
 function switchView(viewName) {
-  const normalizedView = viewName === "calendar" ? "calendar" : "list";
-  const listViewArea = document.getElementById("listViewArea");
-  const calendarViewArea = document.getElementById("calendarViewArea");
-  const listViewBtn = document.getElementById("listViewBtn");
-  const calendarViewBtn = document.getElementById("calendarViewBtn");
+  const allowedViews = ["today", "list", "calendar"];
+  const normalizedView = allowedViews.includes(viewName) ? viewName : "today";
+  const viewElements = {
+    today: {
+      area: document.getElementById("todayScheduleViewArea"),
+      button: document.getElementById("todayScheduleViewBtn"),
+    },
+    list: {
+      area: document.getElementById("listViewArea"),
+      button: document.getElementById("listViewBtn"),
+    },
+    calendar: {
+      area: document.getElementById("calendarViewArea"),
+      button: document.getElementById("calendarViewBtn"),
+    },
+  };
 
   currentView = normalizedView;
 
-  if (normalizedView === "list") {
-    listViewArea.classList.remove("hidden");
-    calendarViewArea.classList.add("hidden");
-    listViewBtn.classList.add("active");
-    calendarViewBtn.classList.remove("active");
-  } else {
-    listViewArea.classList.add("hidden");
-    calendarViewArea.classList.remove("hidden");
-    listViewBtn.classList.remove("active");
-    calendarViewBtn.classList.add("active");
-    if (calendar) {
-      calendar.render();
-    }
+  // 3画面を同じ規則で切り替え、選択中のボタンだけを有効にする
+  Object.entries(viewElements).forEach(([view, elements]) => {
+    elements.area?.classList.toggle("hidden", view !== normalizedView);
+    elements.button?.classList.toggle("active", view === normalizedView);
+  });
+
+  if (normalizedView === "today") {
+    renderTodaySchedule();
+  } else if (normalizedView === "calendar" && calendar) {
+    calendar.render();
   }
 
   const viewInput = document.getElementById("viewInput");
@@ -275,7 +283,62 @@ function renderUnscheduledTasks(tasks, selectedDate, overdueTasks = []) {
   applyFilters();
 }
 
+function getScheduledTasksForDate(dateStr) {
+  return (window.scheduleTasks || []).flatMap((todo) =>
+    (todo.schedules || [])
+      .filter(
+        (schedule) =>
+          normalizeDateKey(schedule.scheduledStart) === dateStr,
+      )
+      .map((schedule) => ({
+        ...todo,
+        scheduleId: schedule.id,
+        scheduledStart: schedule.scheduledStart,
+        scheduledEnd: schedule.scheduledEnd,
+      })),
+  );
+}
+
+function getTodayDateKey() {
+  return normalizeDateKey(new Date());
+}
+
+function renderTodaySchedule() {
+  const timeline = document.getElementById("todayScheduleTimeline");
+  const title = document.getElementById("todayScheduleTitle");
+  const subtitle = document.getElementById("todayScheduleSubtitle");
+  if (!timeline || !title || !subtitle) return;
+
+  const dateStr = getTodayDateKey();
+  const scheduledTasks = getScheduledTasksForDate(dateStr);
+  title.textContent = `今日のスケジュール（${formatDateLabel(dateStr)}）`;
+
+  setupInteractiveSchedule(dateStr, scheduledTasks, {
+    timeline,
+    taskSidebar: null,
+    subtitle,
+  });
+
+  const now = new Date();
+  const currentSlot = Math.floor((now.getHours() * 60 + now.getMinutes()) / 30);
+  timeline.scrollTop = Math.max(0, currentSlot * 48 - 120);
+}
+
+function refreshScheduleViews() {
+  renderTodaySchedule();
+
+  const overlay = document.getElementById("dayScheduleOverlay");
+  if (
+    currentScheduleDate &&
+    overlay &&
+    !overlay.classList.contains("hidden")
+  ) {
+    openDaySchedule(currentScheduleDate);
+  }
+}
+
 function openDaySchedule(dateStr) {
+  currentScheduleDate = dateStr;
   const overlay = document.getElementById("dayScheduleOverlay");
   const title = document.getElementById("scheduleDateTitle");
   const subtitle = document.getElementById("scheduleDateSubtitle");
@@ -328,69 +391,7 @@ function openDaySchedule(dateStr) {
 
   renderUnscheduledTasks(unscheduledTasks, dateStr, overdueTasks);
 
-  const slots = Array.from({ length: 48 }, (_, index) => ({
-    time: formatTimeLabel(index),
-    items: [],
-  }));
-
-  const scheduledTasks = (window.scheduleTasks || []).flatMap((todo) =>
-    (todo.schedules || [])
-      .filter(
-        (schedule) =>
-          normalizeDateKey(schedule.scheduledStart) === dateStr,
-      )
-      .map((schedule) => ({
-        ...todo,
-        scheduleId: schedule.id,
-        scheduledStart: schedule.scheduledStart,
-        scheduledEnd: schedule.scheduledEnd,
-      })),
-  );
-
-  scheduledTasks.forEach((todo, index) => {
-    const slotIndex = index % 48;
-    slots[slotIndex].items.push(todo);
-  });
-
-  timeline.innerHTML = slots
-    .map((slot) => {
-      if (slot.items.length === 0) {
-        return `
-          <div class="schedule-slot">
-            <div class="schedule-time">${slot.time}</div>
-            <div class="schedule-item-list">
-              <div class="schedule-item-empty">予定なし</div>
-            </div>
-          </div>
-        `;
-      }
-
-      return `
-        <div class="schedule-slot">
-          <div class="schedule-time">${slot.time}</div>
-          <div class="schedule-item-list">
-            ${slot.items
-              .map((todo) => {
-                const priorityClass =
-                  todo.priority === "高"
-                    ? "priority-high"
-                    : todo.priority === "低"
-                      ? "priority-low"
-                      : "priority-normal";
-                const doneClass = todo.isCompleted ? "completed" : "";
-                return `
-                  <div class="schedule-item ${priorityClass} ${doneClass}">
-                    <div class="schedule-item-title">${todo.title}</div>
-                    <div class="schedule-item-meta">${todo.categoryName || "分類なし"}</div>
-                  </div>
-                `;
-              })
-              .join("")}
-          </div>
-        </div>
-      `;
-    })
-    .join("");
+  const scheduledTasks = getScheduledTasksForDate(dateStr);
   setupInteractiveSchedule(dateStr, scheduledTasks);
 
   overlay.classList.remove("hidden");
@@ -506,17 +507,18 @@ async function persistTaskSchedule(
   startSlot,
   endSlot,
   scheduleId = null,
+  dateStr = currentScheduleDate,
 ) {
   const todo = getScheduleTask(taskId);
-  if (!todo) return;
+  if (!todo || !dateStr) return;
 
   const isUnscheduled = startSlot === null && endSlot === null;
   const scheduledStart = isUnscheduled
     ? null
-    : buildScheduleIso(currentScheduleDate, startSlot);
+    : buildScheduleIso(dateStr, startSlot);
   const scheduledEnd = isUnscheduled
     ? null
-    : buildScheduleIso(currentScheduleDate, endSlot);
+    : buildScheduleIso(dateStr, endSlot);
 
   try {
     const response = await fetch(`/todos/${todo.id}/schedule`, {
@@ -553,23 +555,31 @@ async function persistTaskSchedule(
         todo.schedules.push(savedSchedule);
       }
     }
-    openDaySchedule(currentScheduleDate);
+    refreshScheduleViews();
   } catch (error) {
     alert(error.message);
   }
 }
 
-function setupInteractiveSchedule(dateStr, scheduledTasks) {
-  currentScheduleDate = dateStr;
-  const timeline = document.getElementById("scheduleTimeline");
-  const taskSidebar = document.getElementById("scheduleTaskSidebar");
-  const subtitle = document.getElementById("scheduleDateSubtitle");
-  if (!timeline || !taskSidebar || !subtitle) return;
+function setupInteractiveSchedule(
+  dateStr,
+  scheduledTasks,
+  {
+    timeline = document.getElementById("scheduleTimeline"),
+    taskSidebar = document.getElementById("scheduleTaskSidebar"),
+    subtitle = document.getElementById("scheduleDateSubtitle"),
+  } = {},
+) {
+  if (!timeline) return;
 
-  subtitle.textContent =
-    scheduledTasks.length > 0
-      ? `${scheduledTasks.length}件を配置済みです（30分単位）`
-      : "左のタスクを時間枠へドラッグしてください";
+  if (subtitle) {
+    subtitle.textContent =
+      scheduledTasks.length > 0
+        ? `${scheduledTasks.length}件を配置済みです（30分単位）`
+        : taskSidebar
+          ? "左のタスクを時間枠へドラッグしてください"
+          : "今日の配置済みタスクはありません";
+  }
 
   const rows = Array.from(
     { length: 48 },
@@ -680,40 +690,55 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
       48,
       startSlot + (draggedScheduleDurationSlots || 2),
     );
-    persistTaskSchedule(taskId, startSlot, endSlot, draggedScheduleId);
+    persistTaskSchedule(
+      taskId,
+      startSlot,
+      endSlot,
+      draggedScheduleId,
+      dateStr,
+    );
   };
 
-  taskSidebar.ondragstart = (event) => {
-    const item = event.target.closest(".unscheduled-task-item");
-    if (!item) return;
-    draggedScheduleTaskId = item.dataset.taskId;
-    draggedScheduleId = null;
-    draggedScheduleDurationSlots = 2;
-    event.dataTransfer.effectAllowed = "move";
-    event.dataTransfer.setData("text/plain", draggedScheduleTaskId);
-    item.classList.add("dragging");
-  };
-  taskSidebar.ondragend = (event) => {
-    event.target.closest(".unscheduled-task-item")?.classList.remove("dragging");
-  };
-  taskSidebar.ondragover = (event) => {
-    event.preventDefault();
-    taskSidebar.classList.add("drop-target");
-  };
-  taskSidebar.ondragleave = (event) => {
-    if (!taskSidebar.contains(event.relatedTarget)) {
+  if (taskSidebar) {
+    taskSidebar.ondragstart = (event) => {
+      const item = event.target.closest(".unscheduled-task-item");
+      if (!item) return;
+      draggedScheduleTaskId = item.dataset.taskId;
+      draggedScheduleId = null;
+      draggedScheduleDurationSlots = 2;
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", draggedScheduleTaskId);
+      item.classList.add("dragging");
+    };
+    taskSidebar.ondragend = (event) => {
+      event.target.closest(".unscheduled-task-item")?.classList.remove("dragging");
+    };
+    taskSidebar.ondragover = (event) => {
+      event.preventDefault();
+      taskSidebar.classList.add("drop-target");
+    };
+    taskSidebar.ondragleave = (event) => {
+      if (!taskSidebar.contains(event.relatedTarget)) {
+        taskSidebar.classList.remove("drop-target");
+      }
+    };
+    taskSidebar.ondrop = (event) => {
+      event.preventDefault();
       taskSidebar.classList.remove("drop-target");
-    }
-  };
-  taskSidebar.ondrop = (event) => {
-    event.preventDefault();
-    taskSidebar.classList.remove("drop-target");
-    const taskId =
-      event.dataTransfer.getData("text/plain") || draggedScheduleTaskId;
-    if (taskId && draggedScheduleId) {
-      persistTaskSchedule(taskId, null, null, draggedScheduleId);
-    }
-  };
+      const taskId =
+        event.dataTransfer.getData("text/plain") || draggedScheduleTaskId;
+      if (taskId && draggedScheduleId) {
+        persistTaskSchedule(
+          taskId,
+          null,
+          null,
+          draggedScheduleId,
+          dateStr,
+        );
+      }
+    };
+  }
+
 
   timeline.querySelectorAll(".schedule-resize-handle").forEach((handle) => {
     handle.addEventListener("pointerdown", (event) => {
@@ -773,6 +798,7 @@ function setupInteractiveSchedule(dateStr, scheduledTasks) {
             nextStartSlot,
             nextEndSlot,
             block.dataset.scheduleId,
+            dateStr,
           );
         }
       };
@@ -793,6 +819,104 @@ function escapeScheduleText(value) {
     .replaceAll("'", "&#039;");
 }
 
+// 解析結果の案内を、登録エラーとは別の領域へ表示する
+function showTaskAnalysisMessage(message, isError = false) {
+  const messageBox = document.getElementById("taskAnalysisMessage");
+  if (!messageBox) return;
+  messageBox.textContent = message;
+  messageBox.classList.remove("hidden");
+  messageBox.classList.toggle("error", isError);
+}
+
+// 検証済みの構造化データだけを既存の詳細入力欄へ反映する
+function applyParsedTaskToDetailForm(parsedTask) {
+  const titleDetail = document.getElementById("titleDetail");
+  const dueDateField = document.getElementById("dueDateField");
+  const prioritySelect = document.getElementById("prioritySelect");
+  const categorySelect = document.getElementById("categorySelect");
+  const newCategoryInput = document.getElementById("newCategoryInput");
+  const simpleMode = document.getElementById("simpleInputMode");
+  const detailMode = document.getElementById("detailInputMode");
+  const toggleBtn = document.getElementById("toggleModeBtn");
+
+  if (
+    !titleDetail ||
+    !dueDateField ||
+    !prioritySelect ||
+    !categorySelect ||
+    !newCategoryInput ||
+    !simpleMode ||
+    !detailMode ||
+    !toggleBtn
+  )
+    return false;
+
+  titleDetail.value = parsedTask.title;
+  dueDateField.value = parsedTask.dueDate || "";
+  prioritySelect.value = parsedTask.priority;
+
+  const matchingCategory = Array.from(categorySelect.options).find(
+    (option) =>
+      option.value !== "指定なし" &&
+      option.value !== "__NEW__" &&
+      option.textContent.trim() === parsedTask.categoryName,
+  );
+
+  if (matchingCategory) {
+    categorySelect.value = matchingCategory.value;
+    newCategoryInput.value = "";
+  } else if (parsedTask.categoryName) {
+    // 未登録分類はDBへ保存せず、既存の新規分類入力へ設定する
+    categorySelect.value = "__NEW__";
+    newCategoryInput.value = parsedTask.categoryName;
+  } else {
+    categorySelect.value = "指定なし";
+    newCategoryInput.value = "";
+  }
+
+  handleCategoryChange();
+  currentMode = "detail";
+  simpleMode.classList.add("hidden");
+  detailMode.classList.remove("hidden");
+  toggleBtn.innerText = "💬 メモ風に自由に入力する";
+  return true;
+}
+
+// 自由文を解析し、ユーザーが確認できる詳細入力画面へ切り替える
+function analyzeSimpleTaskInput() {
+  const titleSimple = document.getElementById("titleSimple");
+  const errorBox = document.getElementById("validationErrorBox");
+  const sourceText = titleSimple?.value.trim() || "";
+
+  if (!sourceText) {
+    if (errorBox) errorBox.classList.remove("hidden");
+    showTaskAnalysisMessage("解析する文章を入力してください。", true);
+    return false;
+  }
+  if (!window.TaskTextParser) {
+    showTaskAnalysisMessage("解析機能を読み込めませんでした。", true);
+    return false;
+  }
+
+  const parsedTask = window.TaskTextParser.parse(sourceText);
+  const validatedTask = window.TaskTextParser.validate(parsedTask, sourceText);
+  if (!validatedTask.title) {
+    showTaskAnalysisMessage("タスク名を読み取れませんでした。", true);
+    return false;
+  }
+
+  if (!applyParsedTaskToDetailForm(validatedTask)) {
+    showTaskAnalysisMessage("解析結果を詳細入力へ反映できませんでした。", true);
+    return false;
+  }
+
+  if (errorBox) errorBox.classList.add("hidden");
+  showTaskAnalysisMessage(
+    "解析結果を詳細入力へ反映しました。内容を確認・修正してから「タスクを追加」を押してください。",
+  );
+  return true;
+}
+
 function closeDaySchedule() {
   const overlay = document.getElementById("dayScheduleOverlay");
   if (overlay) {
@@ -802,8 +926,15 @@ function closeDaySchedule() {
 }
 
 window.addEventListener("DOMContentLoaded", () => {
-  switchView(window.initialView || "list");
+  restoreTaskFilterState();
+  switchView(window.initialView || "today");
   handleCategoryChange();
+  renderTodaySchedule();
+
+  const analyzeSimpleTaskBtn = document.getElementById("analyzeSimpleTaskBtn");
+  if (analyzeSimpleTaskBtn) {
+    analyzeSimpleTaskBtn.addEventListener("click", analyzeSimpleTaskInput);
+  }
 
   const todoForm = document.getElementById("todoForm");
   if (todoForm) {
@@ -822,13 +953,16 @@ window.addEventListener("DOMContentLoaded", () => {
         if (titleSimple.value.trim() === "") {
           isFormEmpty = true;
         } else {
-          titleDetail.value = titleSimple.value;
+          // 自由入力時は即登録せず、解析結果の確認を必須にする
+          e.preventDefault();
+          errorBox.classList.add("hidden");
+          analyzeSimpleTaskInput();
+          return;
         }
-      } else {
-        if (titleDetail.value.trim() === "") {
-          isFormEmpty = true;
-        }
+      } else if (titleDetail.value.trim() === "") {
+        isFormEmpty = true;
       }
+
       if (isFormEmpty) {
         e.preventDefault();
         errorBox.classList.remove("hidden");
@@ -856,6 +990,8 @@ window.addEventListener("DOMContentLoaded", () => {
 // 💡 【機能維持】全体リセット
 function resetWholeForm() {
   document.getElementById("validationErrorBox").classList.add("hidden");
+  const analysisMessage = document.getElementById("taskAnalysisMessage");
+  if (analysisMessage) analysisMessage.classList.add("hidden");
   document.getElementById("titleSimple").value = "";
   document.getElementById("titleDetail").value = "";
   document.getElementById("dueDateField").value = "";
@@ -901,6 +1037,63 @@ function toggleCategoryFilter(btn) {
   applyFilters();
 }
 
+// タスク編集後の再読み込みでも、現在の絞り込み条件を維持する
+const TASK_FILTER_STORAGE_KEY = "task-list-filter-state";
+
+function saveTaskFilterState(searchValue, categoryButtons) {
+  try {
+    const disabledCategoryIds = Array.from(categoryButtons)
+      .filter((btn) => btn.classList.contains("off"))
+      .map((btn) => btn.getAttribute("data-category-id"))
+      .filter(Boolean);
+
+    window.sessionStorage.setItem(
+      TASK_FILTER_STORAGE_KEY,
+      JSON.stringify({ searchValue, disabledCategoryIds }),
+    );
+  } catch (error) {
+    console.warn("絞り込み条件を保存できませんでした:", error);
+  }
+}
+
+function restoreTaskFilterState() {
+  const searchInput = document.getElementById("taskSearchInput");
+  const categoryButtons = document.querySelectorAll(".category-btn");
+  if (!searchInput) return;
+
+  try {
+    const storedState = window.sessionStorage.getItem(TASK_FILTER_STORAGE_KEY);
+    if (storedState) {
+      const parsedState = JSON.parse(storedState);
+      const disabledCategoryIds = Array.isArray(
+        parsedState?.disabledCategoryIds,
+      )
+        ? parsedState.disabledCategoryIds.filter(
+            (categoryId) => typeof categoryId === "string",
+          )
+        : [];
+
+      searchInput.value =
+        typeof parsedState?.searchValue === "string"
+          ? parsedState.searchValue
+          : "";
+      categoryButtons.forEach((btn) => {
+        const isDisabled = disabledCategoryIds.includes(
+          btn.getAttribute("data-category-id"),
+        );
+        btn.classList.toggle("off", isDisabled);
+        const checkMark = btn.querySelector(".check-mark");
+        if (checkMark) checkMark.innerText = isDisabled ? "" : "✓";
+      });
+    }
+  } catch (error) {
+    console.warn("絞り込み条件を復元できませんでした:", error);
+    window.sessionStorage.removeItem(TASK_FILTER_STORAGE_KEY);
+  }
+
+  applyFilters();
+}
+
 function toggleMasterFilter() {
   const masterBtn = document.getElementById("masterFilterBtn");
   const categoryButtons = document.querySelectorAll(".category-btn");
@@ -919,7 +1112,8 @@ function applyFilters() {
   const categoryButtons = document.querySelectorAll(".category-btn");
   const todoItems = document.querySelectorAll(".todo-item");
   const searchInput = document.getElementById("taskSearchInput");
-  const searchWord = searchInput ? searchInput.value.toLowerCase().trim() : "";
+  const searchValue = searchInput ? searchInput.value : "";
+  const searchWord = searchValue.toLowerCase().trim();
   const activeCategoryIds = [];
 
   if (categoryButtons.length > 0) {
@@ -949,10 +1143,35 @@ function applyFilters() {
       searchWord === "" || item.getAttribute("data-title").includes(searchWord);
     item.classList.toggle("hidden", !(isCategoryMatch && isSearchMatch));
   });
+
+  let visibleTodoCount = 0;
+  document.querySelectorAll(".todo-category-column").forEach((column) => {
+    const visibleItems = Array.from(column.querySelectorAll(".todo-item")).filter(
+      (item) => !item.classList.contains("hidden"),
+    );
+    const count = column.querySelector(".todo-category-visible-count");
+    if (count) {
+      count.textContent = String(visibleItems.length);
+    }
+    visibleTodoCount += visibleItems.length;
+    column.classList.toggle("hidden", visibleItems.length === 0);
+  });
+
+  const emptyState = document.getElementById("todoFilterEmptyState");
+  if (emptyState) {
+    emptyState.classList.toggle(
+      "hidden",
+      todoItems.length === 0 || visibleTodoCount > 0,
+    );
+  }
+
+  saveTaskFilterState(searchValue, categoryButtons);
 }
 
 // 💡 【機能維持】メモ風入力 ↔ 詳細入力の切り替え
 function toggleInputMode() {
+  const analysisMessage = document.getElementById("taskAnalysisMessage");
+  if (analysisMessage) analysisMessage.classList.add("hidden");
   const toggleBtn = document.getElementById("toggleModeBtn");
   const simpleMode = document.getElementById("simpleInputMode");
   const detailMode = document.getElementById("detailInputMode");
