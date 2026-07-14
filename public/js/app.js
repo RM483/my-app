@@ -1000,7 +1000,15 @@ function showAutoScheduleMessage(message, isError = false) {
 }
 
 function resetAutoSchedulePreview() {
+  const previewToDiscard = pendingAutoSchedulePreview;
   pendingAutoSchedulePreview = null;
+  if (previewToDiscard?.previewId) {
+    fetch(`/todos/${previewToDiscard.todoId}/auto-schedule/cancel`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ previewId: previewToDiscard.previewId }),
+    }).catch(() => {});
+  }
   const preview = document.getElementById("autoSchedulePreview");
   const list = document.getElementById("autoSchedulePreviewList");
   const messageBox = document.getElementById("autoScheduleMessage");
@@ -1065,12 +1073,7 @@ async function confirmAutoSchedule() {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          placements: pendingAutoSchedulePreview.placements.map(
-            ({ scheduledStart, scheduledEnd }) => ({
-              scheduledStart,
-              scheduledEnd,
-            }),
-          ),
+          previewId: pendingAutoSchedulePreview.previewId,
         }),
       },
     );
