@@ -4,7 +4,10 @@ import { Pool } from "pg";
 import { PrismaPg } from "@prisma/adapter-pg";
 import { PrismaClient } from "./generated/prisma/client";
 import { registerUserSettingsRoutes } from "./user-settings";
-import { registerAutoScheduleRoutes } from "./auto-schedule";
+import {
+  calculateRemainingMinutes,
+  registerAutoScheduleRoutes,
+} from "./auto-schedule";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const adapter = new PrismaPg(pool);
@@ -206,10 +209,20 @@ async function renderIndexPage(
           orderBy: { scheduledStart: "asc" },
         })
       : [];
-  const todosWithSchedules = options.todos.map((todo) => ({
-    ...todo,
-    schedules: schedules.filter((schedule) => schedule.todoId === todo.id),
-  }));
+  const todosWithSchedules = options.todos.map((todo) => {
+    const todoSchedules = schedules.filter(
+      (schedule) => schedule.todoId === todo.id,
+    );
+    return {
+      ...todo,
+      schedules: todoSchedules,
+      // 候補表示も自動配置APIと同じ計算方法で残り時間を判定する
+      remainingEstimatedMinutes: calculateRemainingMinutes(
+        todo.estimatedMinutes,
+        todoSchedules,
+      ),
+    };
+  });
   const sortedTodos = [...todosWithSchedules].sort((a, b) => {
     if (a.isCompleted !== b.isCompleted) {
       return a.isCompleted ? 1 : -1;

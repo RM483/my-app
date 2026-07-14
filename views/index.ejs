@@ -279,6 +279,7 @@
           !todo.isCompleted &&
           todo.dueDate &&
           todo.estimatedMinutes &&
+          todo.remainingEstimatedMinutes > 0 &&
           (!todo.isSplittable || todo.splitMinutes)
         );
       %>
@@ -287,7 +288,7 @@
         <select id="autoScheduleTodoSelect" class="auto-schedule-select" onchange="resetAutoSchedulePreview()">
           <option value="">対象タスクを選択</option>
           <% autoScheduleCandidates.forEach(todo => { %>
-            <option value="<%= todo.id %>"><%= todo.title %>　⏱ 見積 <%= formatEstimatedHours(todo.estimatedMinutes) %>時間<% if (todo.isSplittable && todo.splitMinutes) { %> / <%= formatEstimatedHours(todo.splitMinutes) %>時間ずつ<% } %></option>
+            <option value="<%= todo.id %>"><%= todo.title %>　⏱ 見積 <%= formatEstimatedHours(todo.estimatedMinutes) %>時間<% if (todo.isSplittable && todo.splitMinutes) { %> / <%= formatEstimatedHours(todo.splitMinutes) %>時間ずつ<% } %>・残り<%= formatEstimatedHours(todo.remainingEstimatedMinutes) %>時間</option>
           <% }) %>
         </select>
         <button type="button" id="autoSchedulePreviewBtn" class="auto-schedule-run-btn" onclick="executeAutoSchedulePreview()" <%= autoScheduleCandidates.length === 0 ? 'disabled' : '' %>>自動配置を実行</button>

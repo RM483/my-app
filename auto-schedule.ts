@@ -16,6 +16,22 @@ type Placement = {
   scheduledEnd: Date;
 };
 
+// 現在保存されている全配置の長さを見積時間から差し引く
+export function calculateRemainingMinutes(
+  estimatedMinutes: number | null | undefined,
+  schedules: Placement[],
+) {
+  if (!estimatedMinutes || estimatedMinutes <= 0) return 0;
+
+  const scheduledMilliseconds = schedules.reduce((total, schedule) => {
+    const duration =
+      schedule.scheduledEnd.getTime() - schedule.scheduledStart.getTime();
+    return total + Math.max(0, duration);
+  }, 0);
+
+  return Math.max(0, estimatedMinutes - scheduledMilliseconds / 60000);
+}
+
 class AutoScheduleError extends Error {
   constructor(
     message: string,
@@ -135,6 +151,18 @@ async function calculateAutoSchedule(
     throw new AutoScheduleError("1回あたりの見積時間が設定されていません");
   }
 
+  const todoSchedules = await database.todoSchedule.findMany({
+    where: { todoId },
+    select: { scheduledStart: true, scheduledEnd: true },
+  });
+  const remainingEstimatedMinutes = calculateRemainingMinutes(
+    todo.estimatedMinutes,
+    todoSchedules,
+  );
+  if (remainingEstimatedMinutes <= 0) {
+    throw new AutoScheduleError("見積時間のすべてがすでに配置されています");
+  }
+
   const today = startOfLocalDay(now);
   const dueDate = startOfLocalDay(todo.dueDate);
   if (dueDate < today) {
@@ -196,7 +224,8 @@ async function calculateAutoSchedule(
     }
   }
 
-  const totalMinutes = Math.ceil(todo.estimatedMinutes / 30) * 30;
+  // 保存済みの見積値は変えず、残り時間だけを配置時に30分単位へ切り上げる
+  const totalMinutes = Math.ceil(remainingEstimatedMinutes / 30) * 30;
   const unitMinutes = todo.isSplittable
     ? Math.ceil((todo.splitMinutes as number) / 30) * 30
     : totalMinutes;
