@@ -336,6 +336,79 @@ function refreshScheduleViews() {
   ) {
     openDaySchedule(currentScheduleDate);
   }
+
+  refreshAutoScheduleCandidates();
+}
+
+function formatAutoScheduleHours(minutes) {
+  const hours = minutes / 60;
+  return Number.isInteger(hours)
+    ? String(hours)
+    : hours.toFixed(2).replace(/0+$/, "").replace(/\.$/, "");
+}
+
+function getRemainingAutoScheduleMinutes(todo) {
+  const scheduledMilliseconds = (todo.schedules || []).reduce(
+    (total, schedule) => {
+      const duration =
+        new Date(schedule.scheduledEnd).getTime() -
+        new Date(schedule.scheduledStart).getTime();
+      return total + Math.max(0, Number.isFinite(duration) ? duration : 0);
+    },
+    0,
+  );
+  return Math.max(
+    0,
+    Number(todo.estimatedMinutes || 0) - scheduledMilliseconds / 60000,
+  );
+}
+
+// 予定保存後の最新状態から、自動配置候補と残り時間を作り直す
+function refreshAutoScheduleCandidates() {
+  const select = document.getElementById("autoScheduleTodoSelect");
+  const runButton = document.getElementById("autoSchedulePreviewBtn");
+  const emptyMessage = document.getElementById("autoScheduleEmpty");
+  if (!select || !runButton || !emptyMessage) return;
+
+  if (pendingAutoSchedulePreview) resetAutoSchedulePreview();
+  const selectedTodoId = select.value;
+  const candidates = (window.scheduleTasks || [])
+    .map((todo) => ({
+      todo,
+      remainingMinutes: getRemainingAutoScheduleMinutes(todo),
+    }))
+    .filter(
+      ({ todo, remainingMinutes }) =>
+        !todo.isCompleted &&
+        todo.dueDate &&
+        Number(todo.estimatedMinutes) > 0 &&
+        remainingMinutes > 0 &&
+        (!todo.isSplittable || Number(todo.splitMinutes) > 0),
+    );
+
+  select.innerHTML = "";
+  const placeholder = document.createElement("option");
+  placeholder.value = "";
+  placeholder.textContent = "対象タスクを選択";
+  select.appendChild(placeholder);
+
+  candidates.forEach(({ todo, remainingMinutes }) => {
+    const option = document.createElement("option");
+    option.value = String(todo.id);
+    const splitSummary =
+      todo.isSplittable && todo.splitMinutes
+        ? ` / ${formatAutoScheduleHours(todo.splitMinutes)}時間ずつ`
+        : "";
+    option.textContent = `${todo.title}　⏱ 見積 ${formatAutoScheduleHours(todo.estimatedMinutes)}時間${splitSummary}・残り${formatAutoScheduleHours(remainingMinutes)}時間`;
+    select.appendChild(option);
+  });
+
+  const selectedStillExists = candidates.some(
+    ({ todo }) => String(todo.id) === selectedTodoId,
+  );
+  select.value = selectedStillExists ? selectedTodoId : "";
+  runButton.disabled = candidates.length === 0;
+  emptyMessage.classList.toggle("hidden", candidates.length > 0);
 }
 
 function openDaySchedule(dateStr) {

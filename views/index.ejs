@@ -293,9 +293,7 @@
         </select>
         <button type="button" id="autoSchedulePreviewBtn" class="auto-schedule-run-btn" onclick="executeAutoSchedulePreview()" <%= autoScheduleCandidates.length === 0 ? 'disabled' : '' %>>自動配置を実行</button>
       </div>
-      <% if (autoScheduleCandidates.length === 0) { %>
-        <p class="auto-schedule-empty">見積時間と期日が設定された未完了タスクがありません。</p>
-      <% } %>
+      <p id="autoScheduleEmpty" class="auto-schedule-empty <%= autoScheduleCandidates.length === 0 ? '' : 'hidden' %>">見積時間と期日が設定された未完了タスクがありません。</p>
       <div id="autoScheduleMessage" class="auto-schedule-message hidden" role="status" aria-live="polite"></div>
       <div id="autoSchedulePreview" class="auto-schedule-preview hidden">
         <h3>次の内容で自動配置します</h3>
@@ -407,6 +405,9 @@
         dueDate: todo.dueDate ? todo.dueDate.toISOString() : null,
         priority: todo.priority,
         isCompleted: todo.isCompleted,
+        estimatedMinutes: todo.estimatedMinutes,
+        isSplittable: todo.isSplittable,
+        splitMinutes: todo.splitMinutes,
         schedules: (todo.schedules || []).map(schedule => ({
           id: schedule.id,
           scheduledStart: schedule.scheduledStart.toISOString(),

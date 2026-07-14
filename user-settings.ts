@@ -9,15 +9,15 @@ type DefaultDayDefinition = {
   ranges: ReadonlyArray<readonly [number, number]>;
 };
 
-// 初期設定は全曜日を許可し、時間帯は未入力にする
+// 初期設定は全曜日を許可し、自動配置時間を9:00〜18:00にする
 const DAY_DEFINITIONS: ReadonlyArray<DefaultDayDefinition> = [
-  { weekday: 1, name: "月曜日", isEnabled: true, ranges: [] },
-  { weekday: 2, name: "火曜日", isEnabled: true, ranges: [] },
-  { weekday: 3, name: "水曜日", isEnabled: true, ranges: [] },
-  { weekday: 4, name: "木曜日", isEnabled: true, ranges: [] },
-  { weekday: 5, name: "金曜日", isEnabled: true, ranges: [] },
-  { weekday: 6, name: "土曜日", isEnabled: true, ranges: [] },
-  { weekday: 7, name: "日曜日", isEnabled: true, ranges: [] },
+  { weekday: 1, name: "月曜日", isEnabled: true, ranges: [[540, 1080]] },
+  { weekday: 2, name: "火曜日", isEnabled: true, ranges: [[540, 1080]] },
+  { weekday: 3, name: "水曜日", isEnabled: true, ranges: [[540, 1080]] },
+  { weekday: 4, name: "木曜日", isEnabled: true, ranges: [[540, 1080]] },
+  { weekday: 5, name: "金曜日", isEnabled: true, ranges: [[540, 1080]] },
+  { weekday: 6, name: "土曜日", isEnabled: true, ranges: [[540, 1080]] },
+  { weekday: 7, name: "日曜日", isEnabled: true, ranges: [[540, 1080]] },
 ];
 
 type SettingsDayView = {
@@ -63,7 +63,7 @@ export async function ensureDefaultUserSettings(prisma: PrismaClient) {
   });
   if (existing) return existing;
 
-  // 初回だけ、全曜日許可・時間帯未入力の初期設定を作成する
+  // 初回だけ、全曜日許可・9:00〜18:00の初期設定を作成する
   return prisma.userSetting.create({
     data: {
       userKey: DEFAULT_USER_KEY,
@@ -192,7 +192,7 @@ export function registerUserSettingsRoutes(
   app.post("/settings/reset", async (_req, res) => {
     try {
       const settings = await ensureDefaultUserSettings(prisma);
-      // 保存済み時間帯を削除し、全曜日を許可状態へ戻す
+      // 保存済み時間帯を削除し、全曜日許可・9:00〜18:00へ戻す
       await prisma.$transaction(async (transaction) => {
         for (const definition of DAY_DEFINITIONS) {
           const day = await transaction.autoPlacementDay.upsert({
@@ -211,6 +211,13 @@ export function registerUserSettingsRoutes(
           });
           await transaction.autoPlacementTimeRange.deleteMany({
             where: { dayId: day.id },
+          });
+          await transaction.autoPlacementTimeRange.createMany({
+            data: definition.ranges.map(([startMinute, endMinute]) => ({
+              dayId: day.id,
+              startMinute,
+              endMinute,
+            })),
           });
         }
       });
