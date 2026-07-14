@@ -232,6 +232,27 @@
       <div id="calendar"></div>
     </div>
 
+    <section class="placement-inspector-card" aria-labelledby="placementInspectorTitle">
+      <div class="placement-inspector-heading">
+        <div>
+          <h2 id="placementInspectorTitle">タスクの配置日を確認</h2>
+          <p>配置済みタスクを選択すると、月間カレンダーに同じ色のマーカーを表示します。</p>
+        </div>
+      </div>
+      <div class="placement-inspector-search-row">
+        <label for="placementTaskSearch">タスク名で検索</label>
+        <input type="search" id="placementTaskSearch" placeholder="配置済みタスクを検索">
+      </div>
+      <div id="placementCategoryFilters" class="placement-category-filters"></div>
+      <div class="placement-selection-header">
+        <span>選択中：<strong id="placementSelectedCount">0件</strong></span>
+        <button type="button" id="clearPlacementSelection" class="placement-clear-btn">選択をすべて解除</button>
+      </div>
+      <div id="placementSelectedChips" class="placement-selected-chips"></div>
+      <div id="placementTaskChoices" class="placement-task-choices"></div>
+      <p id="placementTaskEmpty" class="placement-task-empty hidden">条件に一致する配置済みタスクはありません。</p>
+    </section>
+
     <div id="dayScheduleOverlay" class="day-schedule-overlay hidden" aria-hidden="true">
       <div class="day-schedule-panel" role="dialog" aria-modal="true">
         <button type="button" id="closeDayScheduleBtn" class="day-schedule-close" aria-label="閉じる">×</button>
@@ -459,6 +480,9 @@
         },
         buttonText: { today: '今日', month: '月' },
         events: calendarEvents,
+        datesSet: function() {
+          requestAnimationFrame(renderPlacementMarkers);
+        },
         dateClick: function(info) {
           openDaySchedule(info.dateStr);
         },
@@ -468,6 +492,8 @@
       });
 
       calendar.render();
+      initializePlacementTaskInspector();
+      renderPlacementMarkers();
     });
   </script>
 </body>

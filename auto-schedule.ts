@@ -1,8 +1,12 @@
 import type express from "express";
+import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "./generated/prisma/client";
 import { ensureDefaultUserSettings } from "./user-settings";
 
 const HALF_HOUR_MS = 30 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+const JAPAN_OFFSET_MS = 9 * 60 * 60 * 1000;
+const PREVIEW_TTL_MS = 30 * 60 * 1000;
 const DEFAULT_USER_KEY = "default";
 const WEEKDAY_NAMES = ["日", "月", "火", "水", "木", "金", "土"];
 
@@ -15,6 +19,15 @@ type Placement = {
   scheduledStart: Date;
   scheduledEnd: Date;
 };
+
+type StoredAutoSchedulePreview = {
+  previewId: string;
+  todoId: number;
+  placements: Placement[];
+  createdAt: number;
+};
+
+const storedPreviews = new Map<string, StoredAutoSchedulePreview>();
 
 // 現在保存されている全配置の長さを見積時間から差し引く
 export function calculateRemainingMinutes(
@@ -41,22 +54,31 @@ class AutoScheduleError extends Error {
   }
 }
 
-function startOfLocalDay(value: Date) {
-  const date = new Date(value);
-  date.setHours(0, 0, 0, 0);
-  return date;
+function getJapanDateParts(value: Date) {
+  const shifted = new Date(value.getTime() + JAPAN_OFFSET_MS);
+  return {
+    year: shifted.getUTCFullYear(),
+    month: shifted.getUTCMonth(),
+    date: shifted.getUTCDate(),
+    weekday: shifted.getUTCDay(),
+    hour: shifted.getUTCHours(),
+    minute: shifted.getUTCMinutes(),
+  };
 }
 
-function addLocalDays(value: Date, days: number) {
-  const date = new Date(value);
-  date.setDate(date.getDate() + days);
-  return date;
+function startOfJapanDay(value: Date) {
+  const parts = getJapanDateParts(value);
+  return new Date(
+    Date.UTC(parts.year, parts.month, parts.date) - JAPAN_OFFSET_MS,
+  );
+}
+
+function addJapanDays(value: Date, days: number) {
+  return new Date(value.getTime() + days * DAY_MS);
 }
 
 function dateAtMinute(day: Date, minute: number) {
-  const date = startOfLocalDay(day);
-  date.setMinutes(minute);
-  return date;
+  return new Date(day.getTime() + minute * 60 * 1000);
 }
 
 function alignUpToHalfHour(value: Date) {
@@ -109,8 +131,9 @@ function findEarliestSlot(
   return null;
 }
 
-function serializePlacement(placement: Placement) {
+function serializePlacement(placement: Placement, index: number) {
   return {
+    order: index + 1,
     scheduledStart: placement.scheduledStart.toISOString(),
     scheduledEnd: placement.scheduledEnd.toISOString(),
     label: formatPlacementLabel(placement),
@@ -118,17 +141,39 @@ function serializePlacement(placement: Placement) {
 }
 
 function formatPlacementLabel(placement: Placement) {
-  const start = placement.scheduledStart;
-  const end = placement.scheduledEnd;
-  const startTime = `${String(start.getHours()).padStart(2, "0")}:${String(
-    start.getMinutes(),
+  const start = getJapanDateParts(placement.scheduledStart);
+  const end = getJapanDateParts(placement.scheduledEnd);
+  const startTime = `${String(start.hour).padStart(2, "0")}:${String(
+    start.minute,
   ).padStart(2, "0")}`;
-  const endTime = `${String(end.getHours()).padStart(2, "0")}:${String(
-    end.getMinutes(),
+  const endTime = `${String(end.hour).padStart(2, "0")}:${String(
+    end.minute,
   ).padStart(2, "0")}`;
-  return `${start.getMonth() + 1}月${start.getDate()}日（${
-    WEEKDAY_NAMES[start.getDay()]
+  return `${start.month + 1}月${start.date}日（${
+    WEEKDAY_NAMES[start.weekday]
   }） ${startTime}〜${endTime}`;
+}
+
+function removeExpiredPreviews() {
+  const expiresBefore = Date.now() - PREVIEW_TTL_MS;
+  for (const [previewId, preview] of storedPreviews) {
+    if (preview.createdAt < expiresBefore) storedPreviews.delete(previewId);
+  }
+}
+
+function storePreview(todoId: number, placements: Placement[]) {
+  removeExpiredPreviews();
+  const previewId = randomUUID();
+  storedPreviews.set(previewId, {
+    previewId,
+    todoId,
+    placements: placements.map((placement) => ({
+      scheduledStart: new Date(placement.scheduledStart),
+      scheduledEnd: new Date(placement.scheduledEnd),
+    })),
+    createdAt: Date.now(),
+  });
+  return previewId;
 }
 
 async function calculateAutoSchedule(
@@ -163,8 +208,8 @@ async function calculateAutoSchedule(
     throw new AutoScheduleError("見積時間のすべてがすでに配置されています");
   }
 
-  const today = startOfLocalDay(now);
-  const dueDate = startOfLocalDay(todo.dueDate);
+  const today = startOfJapanDay(now);
+  const dueDate = startOfJapanDay(todo.dueDate);
   if (dueDate < today) {
     throw new AutoScheduleError("期日を過ぎたタスクは自動配置できません");
   }
@@ -183,7 +228,7 @@ async function calculateAutoSchedule(
     );
   }
 
-  const searchEnd = addLocalDays(dueDate, 1);
+  const searchEnd = addJapanDays(dueDate, 1);
   const busySchedules = await database.todoSchedule.findMany({
     where: {
       scheduledStart: { lt: searchEnd },
@@ -203,9 +248,10 @@ async function calculateAutoSchedule(
   for (
     let day = new Date(today);
     day <= dueDate;
-    day = addLocalDays(day, 1)
+    day = addJapanDays(day, 1)
   ) {
-    const weekday = day.getDay() === 0 ? 7 : day.getDay();
+    const japanWeekday = getJapanDateParts(day).weekday;
+    const weekday = japanWeekday === 0 ? 7 : japanWeekday;
     const setting = daySettings.get(weekday);
     if (!setting?.isEnabled) continue;
 
@@ -262,21 +308,11 @@ async function calculateAutoSchedule(
   return { todo, placements, totalMinutes };
 }
 
-function placementsMatch(expected: unknown, actual: Placement[]) {
-  if (!Array.isArray(expected) || expected.length !== actual.length) {
-    return false;
-  }
-  return actual.every((placement, index) => {
-    const candidate = expected[index];
-    return (
-      candidate &&
-      typeof candidate === "object" &&
-      (candidate as Record<string, unknown>).scheduledStart ===
-        placement.scheduledStart.toISOString() &&
-      (candidate as Record<string, unknown>).scheduledEnd ===
-        placement.scheduledEnd.toISOString()
-    );
-  });
+function getStoredPreview(previewId: unknown, todoId: number) {
+  removeExpiredPreviews();
+  if (typeof previewId !== "string") return null;
+  const preview = storedPreviews.get(previewId);
+  return preview?.todoId === todoId ? preview : null;
 }
 
 function sendAutoScheduleError(
@@ -303,7 +339,9 @@ export function registerAutoScheduleRoutes(
       }
       await ensureDefaultUserSettings(prisma);
       const result = await calculateAutoSchedule(prisma, todoId);
+      const previewId = storePreview(todoId, result.placements);
       res.json({
+        previewId,
         todoId,
         todoTitle: result.todo.title,
         roundedEstimatedMinutes: result.totalMinutes,
@@ -324,19 +362,46 @@ export function registerAutoScheduleRoutes(
       if (!Number.isInteger(todoId)) {
         throw new AutoScheduleError("タスクIDが正しくありません");
       }
-      await ensureDefaultUserSettings(prisma);
+      const preview = getStoredPreview(req.body.previewId, todoId);
+      if (!preview) {
+        throw new AutoScheduleError(
+          "プレビューの有効期限が切れています。もう一度プレビューしてください",
+          409,
+        );
+      }
 
       const savedSchedules = await prisma.$transaction(async (transaction) => {
-        const result = await calculateAutoSchedule(transaction, todoId);
-        if (!placementsMatch(req.body.placements, result.placements)) {
+        const firstStart = preview.placements[0].scheduledStart;
+        const lastEnd = preview.placements.reduce(
+          (latest, placement) =>
+            placement.scheduledEnd > latest ? placement.scheduledEnd : latest,
+          preview.placements[0].scheduledEnd,
+        );
+        const currentSchedules = await transaction.todoSchedule.findMany({
+          where: {
+            scheduledStart: { lt: lastEnd },
+            scheduledEnd: { gt: firstStart },
+          },
+          select: { scheduledStart: true, scheduledEnd: true },
+        });
+        const hasNewConflict = preview.placements.some((placement) =>
+          currentSchedules.some((schedule) =>
+            overlaps(
+              placement.scheduledStart,
+              placement.scheduledEnd,
+              schedule,
+            ),
+          ),
+        );
+        if (hasNewConflict) {
           throw new AutoScheduleError(
-            "空き時間の状況が変わりました。もう一度プレビューしてください",
+            "プレビュー後に予定が変更されました。もう一度プレビューしてください",
             409,
           );
         }
 
         const createdSchedules = [];
-        for (const placement of result.placements) {
+        for (const placement of preview.placements) {
           createdSchedules.push(
             await transaction.todoSchedule.create({
               data: {
@@ -349,6 +414,7 @@ export function registerAutoScheduleRoutes(
         }
         return createdSchedules;
       });
+      storedPreviews.delete(preview.previewId);
 
       res.json({
         todoId,
@@ -361,5 +427,12 @@ export function registerAutoScheduleRoutes(
     } catch (error) {
       sendAutoScheduleError(res, error, "自動配置の確定に失敗しました");
     }
+  });
+
+  app.post("/todos/:id/auto-schedule/cancel", (req, res) => {
+    const todoId = Number(req.params.id);
+    const preview = getStoredPreview(req.body.previewId, todoId);
+    if (preview) storedPreviews.delete(preview.previewId);
+    res.status(204).send();
   });
 }
