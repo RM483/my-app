@@ -373,6 +373,20 @@
             </select>
           </div>
         </div>
+        <div class="form-group">
+          <label>分類（カテゴリ）</label>
+          <select name="categoryId" id="categorySelect" class="standard-input" onchange="handleCategoryChange()">
+            <option value="指定なし" <%= safeFormValues && safeFormValues.categoryId === '指定なし' ? 'selected' : '' %>>指定なし</option>
+            <% categories.forEach(cat => { %>
+              <option value="<%= cat.id %>" <%= safeFormValues && String(safeFormValues.categoryId) === String(cat.id) ? 'selected' : '' %>><%= cat.name %></option>
+            <% }) %>
+            <option value="__NEW__" <%= safeFormValues && safeFormValues.categoryId === '__NEW__' ? 'selected' : '' %>>（＋ 新しい分類を追加）</option>
+          </select>
+          <span id="newCategoryWrapper" class="hidden" style="display: block; margin-top: 5px;">
+            <input type="text" name="newCategory" id="newCategoryInput" class="standard-input" placeholder="新しい分類名を入力" value="<%= safeFormValues && safeFormValues.newCategory ? safeFormValues.newCategory : '' %>">
+          </span>
+        </div>
+        <button type="button" id="deleteCategoryBtn" class="hidden" onclick="deleteSelectedCategory()" style="margin-top: 10px; color: #e53e3e; background: none; border: 1px solid #e53e3e; padding: 4px 8px; border-radius: 4px; cursor: pointer; width: 100%;">❌ この分類自体を非表示にする</button>
         <div class="auto-placement-form-grid">
           <div class="form-group">
             <label>見積時間</label>
@@ -403,19 +417,6 @@
             </span>
           </div>
         </div>
-        <div class="form-group">
-          <label>分類（カテゴリ）</label>
-          <select name="categoryId" id="categorySelect" class="standard-input" onchange="handleCategoryChange()">
-            <option value="指定なし" <%= safeFormValues && safeFormValues.categoryId === '指定なし' ? 'selected' : '' %>>指定なし</option>
-            <% categories.forEach(cat => { %>
-              <option value="<%= cat.id %>" <%= safeFormValues && String(safeFormValues.categoryId) === String(cat.id) ? 'selected' : '' %>><%= cat.name %></option>
-            <% }) %>
-            <option value="__NEW__" <%= safeFormValues && safeFormValues.categoryId === '__NEW__' ? 'selected' : '' %>>（＋ 新しい分類を追加）</option>
-          </select>
-          <span id="newCategoryWrapper" class="hidden" style="display: block; margin-top: 5px;">
-            <input type="text" name="newCategory" id="newCategoryInput" class="standard-input" placeholder="新しい分類名を入力" value="<%= safeFormValues && safeFormValues.newCategory ? safeFormValues.newCategory : '' %>">
-          </span>
-        </div>
       </div>
 
       <div id="taskAnalysisMessage" class="task-analysis-message hidden" role="status"></div>
@@ -424,7 +425,6 @@
         <button type="submit" class="submit-btn">タスクを追加</button>
         <button type="button" class="reset-btn" onclick="resetWholeForm()">🔄 全てリセット</button>
       </div>
-      <button type="button" id="deleteCategoryBtn" class="hidden" onclick="deleteSelectedCategory()" style="margin-top: 10px; color: #e53e3e; background: none; border: 1px solid #e53e3e; padding: 4px 8px; border-radius: 4px; cursor: pointer; width: 100%;">❌ この分類自体を非表示にする</button>
     </form>
   </div>
 
