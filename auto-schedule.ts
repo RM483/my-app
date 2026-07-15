@@ -93,6 +93,41 @@ function overlaps(start: Date, end: Date, busy: Placement) {
   return start < busy.scheduledEnd && end > busy.scheduledStart;
 }
 
+// 日本時間の日付ごとに、同じタスクがすでに配置されている時間を集計する
+function calculateScheduledMinutesByJapanDay(schedules: Placement[]) {
+  const minutesByDay = new Map<number, number>();
+
+  for (const schedule of schedules) {
+    if (schedule.scheduledEnd <= schedule.scheduledStart) continue;
+
+    for (
+      let day = startOfJapanDay(schedule.scheduledStart);
+      day < schedule.scheduledEnd;
+      day = addJapanDays(day, 1)
+    ) {
+      const nextDay = addJapanDays(day, 1);
+      const overlapStart = Math.max(
+        schedule.scheduledStart.getTime(),
+        day.getTime(),
+      );
+      const overlapEnd = Math.min(
+        schedule.scheduledEnd.getTime(),
+        nextDay.getTime(),
+      );
+      if (overlapStart >= overlapEnd) continue;
+
+      const dayKey = day.getTime();
+      const durationMinutes = (overlapEnd - overlapStart) / 60000;
+      minutesByDay.set(
+        dayKey,
+        (minutesByDay.get(dayKey) ?? 0) + durationMinutes,
+      );
+    }
+  }
+
+  return minutesByDay;
+}
+
 function findEarliestSlot(
   durationMinutes: number,
   windows: Placement[],
@@ -195,6 +230,12 @@ async function calculateAutoSchedule(
   if (todo.isSplittable && (!todo.splitMinutes || todo.splitMinutes <= 0)) {
     throw new AutoScheduleError("1回あたりの見積時間が設定されていません");
   }
+  if (
+    todo.isSplittable &&
+    (!todo.dailyLimitMinutes || todo.dailyLimitMinutes <= 0)
+  ) {
+    throw new AutoScheduleError("1日の実施時間上限が設定されていません");
+  }
 
   const todoSchedules = await database.todoSchedule.findMany({
     where: { todoId },
@@ -207,6 +248,11 @@ async function calculateAutoSchedule(
   if (remainingEstimatedMinutes <= 0) {
     throw new AutoScheduleError("見積時間のすべてがすでに配置されています");
   }
+
+  // 保存済み配置には、手動配置や移動・リサイズ後の配置もすべて含まれる
+  const scheduledMinutesByDay = todo.isSplittable
+    ? calculateScheduledMinutesByJapanDay(todoSchedules)
+    : new Map<number, number>();
 
   const today = startOfJapanDay(now);
   const dueDate = startOfJapanDay(todo.dueDate);
@@ -279,24 +325,48 @@ async function calculateAutoSchedule(
   let remainingMinutes = totalMinutes;
 
   while (remainingMinutes > 0) {
+    // 通常は1回あたりの時間を使い、全体の最後の端数だけ短くする
     const durationMinutes = todo.isSplittable
       ? Math.min(unitMinutes, remainingMinutes)
       : totalMinutes;
+    const availableWindows = todo.isSplittable
+      ? windows.filter((window) => {
+          const dayKey = startOfJapanDay(window.scheduledStart).getTime();
+          const alreadyScheduled = scheduledMinutesByDay.get(dayKey) ?? 0;
+          return (
+            alreadyScheduled + durationMinutes <=
+            (todo.dailyLimitMinutes as number)
+          );
+        })
+      : windows;
     const placement = findEarliestSlot(
       durationMinutes,
-      windows,
+      availableWindows,
       busyPeriods,
     );
     if (!placement) {
+      // 上限を外せば空き枠がある場合は、配置不能の理由を明確に伝える
+      const blockedByDailyLimit =
+        todo.isSplittable &&
+        findEarliestSlot(durationMinutes, windows, busyPeriods) !== null;
       throw new AutoScheduleError(
-        todo.isSplittable
-          ? "期日までに必要な空き時間を確保できませんでした"
-          : "期日までに見積時間を連続して確保できる空き時間がありませんでした",
+        blockedByDailyLimit
+          ? "1日の実施時間上限を守ると、期日までに必要な時間を配置できませんでした。"
+          : todo.isSplittable
+            ? "期日までに必要な空き時間を確保できませんでした"
+            : "期日までに見積時間を連続して確保できる空き時間がありませんでした",
       );
     }
 
     placements.push(placement);
     busyPeriods.push(placement);
+    if (todo.isSplittable) {
+      const dayKey = startOfJapanDay(placement.scheduledStart).getTime();
+      scheduledMinutesByDay.set(
+        dayKey,
+        (scheduledMinutesByDay.get(dayKey) ?? 0) + durationMinutes,
+      );
+    }
     remainingMinutes -= durationMinutes;
     if (!todo.isSplittable) break;
   }

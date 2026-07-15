@@ -539,7 +539,7 @@ h2 {
 }
 .auto-placement-editor-form {
   display: grid;
-  grid-template-columns: minmax(105px, 1fr) minmax(110px, 1fr) minmax(105px, 1fr) auto;
+  grid-template-columns: repeat(2, minmax(140px, 1fr));
   gap: 8px;
   align-items: end;
 }
@@ -575,8 +575,19 @@ h2 {
   color: #718096;
   font-size: 0.78rem;
 }
+.auto-placement-inline-error {
+  grid-column: 1 / -1;
+  margin-bottom: 2px;
+  font-size: 0.82rem;
+}
+.auto-placement-inline-error span:last-child,
+#validationErrorBox span:last-child {
+  white-space: pre-line;
+}
 .auto-placement-editor-actions {
   display: flex;
+  grid-column: 1 / -1;
+  justify-content: flex-end;
   gap: 6px;
 }
 .auto-placement-save-btn,
@@ -747,7 +758,7 @@ h2 {
 }
 .auto-placement-form-grid {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 10px;
 }
 .standard-duration-input .standard-input {
