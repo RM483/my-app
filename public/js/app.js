@@ -1392,7 +1392,7 @@ async function confirmAutoSchedule() {
 
     pendingAutoSchedulePreview = null;
     showAutoScheduleMessage("自動配置を保存しました。");
-    window.location.reload();
+    window.location.href = "/?view=calendar";
   } catch (error) {
     showAutoScheduleMessage(error.message, true);
     if (confirmButton) confirmButton.disabled = false;
