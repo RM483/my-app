@@ -28,6 +28,7 @@ model Todo {
   estimatedMinutes Int?
   isSplittable     Boolean @default(false)
   splitMinutes     Int?
+  dailyLimitMinutes Int? // 同じタスクを1日に自動配置できる合計時間の上限
 
   category    Category? @relation(fields: [categoryId], references: [id], onDelete: SetNull)
   categoryId  Int?      // 所属する分類の識別番号

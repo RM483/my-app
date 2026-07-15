@@ -1412,6 +1412,122 @@ function closeDaySchedule() {
   }
 }
 
+const AUTO_PLACEMENT_CONSISTENCY_MESSAGES = {
+  splitExceedsEstimate:
+    "1回あたりの時間は、見積時間以下にしてください。",
+  splitExceedsDailyLimit:
+    "1回あたりの時間は、1日の実施時間上限以下にしてください。",
+};
+
+// 見積未設定・分割不可は対象外とし、該当する整合性エラーをすべて返す。
+function getAutoPlacementConsistencyErrors(form) {
+  const estimatedHours = form.querySelector('input[name="estimatedHours"]');
+  const isSplittable = form.querySelector('select[name="isSplittable"]');
+  const splitHours = form.querySelector('input[name="splitHours"]');
+  const dailyLimitHours = form.querySelector(
+    'input[name="dailyLimitHours"]',
+  );
+  if (
+    !estimatedHours ||
+    estimatedHours.value.trim() === "" ||
+    isSplittable?.value !== "true" ||
+    !splitHours ||
+    !dailyLimitHours
+  ) {
+    return [];
+  }
+
+  const estimatedValue = Number(estimatedHours.value);
+  const splitValue = Number(splitHours.value);
+  const dailyLimitValue = Number(dailyLimitHours.value);
+  if (
+    !Number.isFinite(estimatedValue) ||
+    !Number.isFinite(splitValue) ||
+    !Number.isFinite(dailyLimitValue)
+  ) {
+    return [];
+  }
+
+  const errors = [];
+  if (splitValue > estimatedValue) errors.push("splitExceedsEstimate");
+  if (splitValue > dailyLimitValue) {
+    errors.push("splitExceedsDailyLimit");
+  }
+  return errors;
+}
+
+function parseOptionalHours(value) {
+  if (String(value ?? "").trim() === "") return null;
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+// 変更項目を1つずつ保存値へ戻したとき、違反が解消する項目だけを抽出する。
+function getConsistencyRollbackInputNames(form, consistencyErrors) {
+  const submitted = {
+    estimatedHours: parseOptionalHours(
+      form.querySelector('input[name="estimatedHours"]')?.value,
+    ),
+    splitHours: parseOptionalHours(
+      form.querySelector('input[name="splitHours"]')?.value,
+    ),
+    dailyLimitHours: parseOptionalHours(
+      form.querySelector('input[name="dailyLimitHours"]')?.value,
+    ),
+  };
+  const saved = {
+    estimatedHours: parseOptionalHours(form.dataset.savedEstimatedHours),
+    splitHours: parseOptionalHours(form.dataset.savedSplitHours),
+    dailyLimitHours: parseOptionalHours(form.dataset.savedDailyLimitHours),
+  };
+  const changed = (field) => submitted[field] !== saved[field];
+  const resolves = (leftValue, rightValue) =>
+    leftValue === null || rightValue === null || leftValue <= rightValue;
+  const rollbackFields = new Set();
+
+  const collectCauses = (leftField, rightField) => {
+    const leftChanged = changed(leftField);
+    const rightChanged = changed(rightField);
+    const revertingLeftResolves =
+      leftChanged && resolves(saved[leftField], submitted[rightField]);
+    const revertingRightResolves =
+      rightChanged && resolves(submitted[leftField], saved[rightField]);
+    if (revertingLeftResolves) rollbackFields.add(leftField);
+    if (revertingRightResolves) rollbackFields.add(rightField);
+    if (
+      !revertingLeftResolves &&
+      !revertingRightResolves &&
+      leftChanged &&
+      rightChanged
+    ) {
+      rollbackFields.add(leftField);
+      rollbackFields.add(rightField);
+    }
+  };
+
+  if (consistencyErrors.includes("splitExceedsEstimate")) {
+    collectCauses("splitHours", "estimatedHours");
+  }
+  if (consistencyErrors.includes("splitExceedsDailyLimit")) {
+    collectCauses("splitHours", "dailyLimitHours");
+  }
+  return rollbackFields;
+}
+
+function showAutoPlacementValidationErrors(errorBox, consistencyErrors) {
+  const message = errorBox?.querySelector("span:last-child");
+  const messages = consistencyErrors.map(
+    (errorType) => AUTO_PLACEMENT_CONSISTENCY_MESSAGES[errorType],
+  );
+  if (message) {
+    message.textContent =
+      messages.length > 1
+        ? messages.map((item) => `・${item}`).join("\n")
+        : messages[0] || "";
+  }
+  errorBox?.classList.remove("hidden");
+}
+
 window.addEventListener("DOMContentLoaded", () => {
   restoreTaskFilterState();
   switchView(window.initialView || "today");
@@ -1450,6 +1566,15 @@ window.addEventListener("DOMContentLoaded", () => {
         isFormEmpty = true;
       }
 
+      const consistencyErrors =
+        getAutoPlacementConsistencyErrors(todoForm);
+      if (!isFormEmpty && consistencyErrors.length > 0) {
+        e.preventDefault();
+        showAutoPlacementValidationErrors(errorBox, consistencyErrors);
+        window.scrollTo({ top: errorBox.offsetTop - 20, behavior: "smooth" });
+        return;
+      }
+
       if (isFormEmpty) {
         e.preventDefault();
         errorBox.classList.remove("hidden");
@@ -1459,6 +1584,39 @@ window.addEventListener("DOMContentLoaded", () => {
       }
     });
   }
+
+  document.querySelectorAll(".auto-placement-editor-form").forEach((form) => {
+    form.addEventListener("submit", (event) => {
+      const consistencyErrors = getAutoPlacementConsistencyErrors(form);
+      if (consistencyErrors.length === 0) return;
+
+      event.preventDefault();
+      const rollbackFields = getConsistencyRollbackInputNames(
+        form,
+        consistencyErrors,
+      );
+      const inputs = {
+        estimatedHours: form.querySelector('input[name="estimatedHours"]'),
+        splitHours: form.querySelector('input[name="splitHours"]'),
+        dailyLimitHours: form.querySelector(
+          'input[name="dailyLimitHours"]',
+        ),
+      };
+      const savedDatasetKeys = {
+        estimatedHours: "savedEstimatedHours",
+        splitHours: "savedSplitHours",
+        dailyLimitHours: "savedDailyLimitHours",
+      };
+      for (const field of rollbackFields) {
+        if (inputs[field]) {
+          inputs[field].value = form.dataset[savedDatasetKeys[field]] || "";
+        }
+      }
+      const errorBox = document.getElementById(form.dataset.errorTarget);
+      showAutoPlacementValidationErrors(errorBox, consistencyErrors);
+      errorBox?.scrollIntoView({ behavior: "smooth", block: "nearest" });
+    });
+  });
 
   const overlay = document.getElementById("dayScheduleOverlay");
   const closeBtn = document.getElementById("closeDayScheduleBtn");
@@ -1487,13 +1645,17 @@ function resetWholeForm() {
   const estimatedHoursField = document.getElementById("estimatedHoursField");
   const isSplittableField = document.getElementById("isSplittableField");
   const splitHoursField = document.getElementById("splitHoursField");
+  const dailyLimitHoursField = document.getElementById("dailyLimitHoursField");
   if (estimatedHoursField) estimatedHoursField.value = "";
   if (isSplittableField) isSplittableField.value = "false";
-  if (splitHoursField) splitHoursField.value = "";
+  if (splitHoursField) splitHoursField.value = "1";
+  if (dailyLimitHoursField) dailyLimitHoursField.value = "2";
   updateSplitEstimateVisibility(
     "isSplittableField",
     "splitHoursGroup",
     "splitHoursField",
+    "dailyLimitHoursGroup",
+    "dailyLimitHoursField",
   );
   const catSelect = document.getElementById("categorySelect");
   catSelect.value = "指定なし";
@@ -1526,17 +1688,42 @@ function cancelInlineCategory(todoId) {
   }, 200);
 }
 
-// 分割可否に応じて「1回あたり」の入力だけを切り替える
-function updateSplitEstimateVisibility(selectId, groupId, inputId) {
+// 分割可否に応じて、分割時だけ必要な2つの時間設定をまとめて切り替える
+function updateSplitEstimateVisibility(
+  selectId,
+  groupId,
+  inputId,
+  dailyLimitGroupId,
+  dailyLimitInputId,
+) {
   const select = document.getElementById(selectId);
   const group = document.getElementById(groupId);
   const input = document.getElementById(inputId);
   if (!select || !group || !input) return;
 
+  const dailyLimitGroup = dailyLimitGroupId
+    ? document.getElementById(dailyLimitGroupId)
+    : null;
+  const dailyLimitInput = dailyLimitInputId
+    ? document.getElementById(dailyLimitInputId)
+    : null;
   const isSplittable = select.value === "true";
   group.classList.toggle("hidden", !isSplittable);
   input.disabled = !isSplittable;
   input.required = isSplittable;
+  if (dailyLimitGroup) {
+    dailyLimitGroup.classList.toggle("hidden", !isSplittable);
+  }
+  if (dailyLimitInput) {
+    dailyLimitInput.disabled = !isSplittable;
+    dailyLimitInput.required = isSplittable;
+  }
+
+  // 新しく分割可へ切り替えたときだけ、推奨初期値を補う。
+  if (isSplittable && input.value === "") input.value = "1";
+  if (isSplittable && dailyLimitInput?.value === "") {
+    dailyLimitInput.value = "2";
+  }
 }
 
 function toggleAutoPlacementEditor(todoId) {
@@ -1572,6 +1759,8 @@ function cancelAutoPlacementEditor(todoId) {
       `todoSplittable-${todoId}`,
       `todoSplitHoursGroup-${todoId}`,
       `todoSplitHours-${todoId}`,
+      `todoDailyLimitHoursGroup-${todoId}`,
+      `todoDailyLimitHours-${todoId}`,
     );
   }
   editor.classList.add("hidden");
@@ -1591,15 +1780,23 @@ function resetAutoPlacementEditor(todoId) {
   );
   const isSplittable = document.getElementById(`todoSplittable-${todoId}`);
   const splitHours = document.getElementById(`todoSplitHours-${todoId}`);
-  if (!estimatedHours || !isSplittable || !splitHours) return;
+  const dailyLimitHours = document.getElementById(
+    `todoDailyLimitHours-${todoId}`,
+  );
+  if (!estimatedHours || !isSplittable || !splitHours || !dailyLimitHours) {
+    return;
+  }
 
   estimatedHours.value = "";
   isSplittable.value = "false";
   splitHours.value = "";
+  dailyLimitHours.value = "";
   updateSplitEstimateVisibility(
     `todoSplittable-${todoId}`,
     `todoSplitHoursGroup-${todoId}`,
     `todoSplitHours-${todoId}`,
+    `todoDailyLimitHoursGroup-${todoId}`,
+    `todoDailyLimitHours-${todoId}`,
   );
   estimatedHours.focus();
 }

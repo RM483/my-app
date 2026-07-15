@@ -69,7 +69,7 @@
       </div>
     <% } %>
 
-    <% if (safeErrorType === 'listDuplicate' || safeErrorType === 'listEmptyTitle' || safeErrorType === 'listInvalidAutoPlacement') { %>
+    <% if (safeErrorType === 'listDuplicate' || safeErrorType === 'listEmptyTitle') { %>
       <div class="client-error-msg" style="margin-bottom: 12px;">
         <span>⚠️</span>
         <span><%= safeErrorMessage || '入力内容に問題があります。' %></span>
@@ -188,7 +188,11 @@
             </form>
 
             <div id="autoPlacementEditor-<%= todo.id %>" class="auto-placement-editor <%= safeAutoPlacementEditTodoId === todo.id ? '' : 'hidden' %>">
-              <form action="/todos/<%= todo.id %>/auto-placement" method="POST" class="auto-placement-editor-form">
+              <div id="autoPlacementError-<%= todo.id %>" class="client-error-msg auto-placement-inline-error <%= safeAutoPlacementEditTodoId === todo.id && (safeErrorType === 'listInvalidAutoPlacement' || safeErrorType === 'listSplitExceedsDailyLimit' || safeErrorType === 'listSplitExceedsEstimate') ? '' : 'hidden' %>">
+                <span>⚠️</span>
+                <span><%= safeAutoPlacementEditTodoId === todo.id ? (safeErrorMessage || '自動配置用設定を確認してください。') : '' %></span>
+              </div>
+              <form action="/todos/<%= todo.id %>/auto-placement" method="POST" class="auto-placement-editor-form" data-saved-estimated-hours="<%= formatEstimatedHours(todo.estimatedMinutes) %>" data-saved-split-hours="<%= formatEstimatedHours(todo.splitMinutes) %>" data-saved-daily-limit-hours="<%= formatEstimatedHours(todo.dailyLimitMinutes) %>" data-error-target="autoPlacementError-<%= todo.id %>">
                 <label>
                   <span>見積時間</span>
                   <span class="duration-input">
@@ -198,7 +202,7 @@
                 </label>
                 <label>
                   <span>分割</span>
-                  <select name="isSplittable" id="todoSplittable-<%= todo.id %>" onchange="updateSplitEstimateVisibility('todoSplittable-<%= todo.id %>', 'todoSplitHoursGroup-<%= todo.id %>', 'todoSplitHours-<%= todo.id %>')">
+                  <select name="isSplittable" id="todoSplittable-<%= todo.id %>" onchange="updateSplitEstimateVisibility('todoSplittable-<%= todo.id %>', 'todoSplitHoursGroup-<%= todo.id %>', 'todoSplitHours-<%= todo.id %>', 'todoDailyLimitHoursGroup-<%= todo.id %>', 'todoDailyLimitHours-<%= todo.id %>')">
                     <% const inlineSplittable = safeFormValues['todo-' + todo.id + '-isSplittable'] !== undefined ? safeFormValues['todo-' + todo.id + '-isSplittable'] === 'true' : todo.isSplittable; %>
                     <option value="false" <%= !inlineSplittable ? 'selected' : '' %>>分割できない</option>
                     <option value="true" <%= inlineSplittable ? 'selected' : '' %>>分割できる</option>
@@ -208,6 +212,13 @@
                   <span>1回あたり</span>
                   <span class="duration-input">
                     <input type="number" name="splitHours" id="todoSplitHours-<%= todo.id %>" min="0.25" step="0.25" placeholder="例：1" value="<%= safeFormValues['todo-' + todo.id + '-splitHours'] !== undefined ? safeFormValues['todo-' + todo.id + '-splitHours'] : formatEstimatedHours(todo.splitMinutes) %>" <%= inlineSplittable ? 'required' : 'disabled' %>>
+                    <span>時間</span>
+                  </span>
+                </label>
+                <label id="todoDailyLimitHoursGroup-<%= todo.id %>" class="<%= inlineSplittable ? '' : 'hidden' %>">
+                  <span>1日の実施時間上限</span>
+                  <span class="duration-input">
+                    <input type="number" name="dailyLimitHours" id="todoDailyLimitHours-<%= todo.id %>" min="0.25" step="0.25" placeholder="例：2" value="<%= safeFormValues['todo-' + todo.id + '-dailyLimitHours'] !== undefined ? safeFormValues['todo-' + todo.id + '-dailyLimitHours'] : (todo.dailyLimitMinutes ? formatEstimatedHours(todo.dailyLimitMinutes) : (inlineSplittable ? '2' : '')) %>" <%= inlineSplittable ? 'required' : 'disabled' %>>
                     <span>時間</span>
                   </span>
                 </label>
@@ -328,7 +339,7 @@
   </div>
 
   <h2>タスクを追加する</h2>
-  <div id="validationErrorBox" class="client-error-msg <%= (safeErrorType === 'emptyTitle' || safeErrorType === 'duplicate' || safeErrorType === 'invalidAutoPlacement') && safeErrorMessage ? '' : 'hidden' %>">
+  <div id="validationErrorBox" class="client-error-msg <%= (safeErrorType === 'emptyTitle' || safeErrorType === 'duplicate' || safeErrorType === 'invalidAutoPlacement' || safeErrorType === 'splitExceedsDailyLimit' || safeErrorType === 'splitExceedsEstimate') && safeErrorMessage ? '' : 'hidden' %>">
     <span>⚠️</span>
     <span><%= safeErrorMessage || 'タスク名を入力してくださいな。' %></span>
   </div>
@@ -372,7 +383,7 @@
           </div>
           <div class="form-group">
             <label>分割できるか</label>
-            <select name="isSplittable" id="isSplittableField" class="standard-input" onchange="updateSplitEstimateVisibility('isSplittableField', 'splitHoursGroup', 'splitHoursField')">
+            <select name="isSplittable" id="isSplittableField" class="standard-input" onchange="updateSplitEstimateVisibility('isSplittableField', 'splitHoursGroup', 'splitHoursField', 'dailyLimitHoursGroup', 'dailyLimitHoursField')">
               <option value="false" <%= !safeFormValues || safeFormValues.isSplittable !== 'true' ? 'selected' : '' %>>分割できない</option>
               <option value="true" <%= safeFormValues && safeFormValues.isSplittable === 'true' ? 'selected' : '' %>>分割できる</option>
             </select>
@@ -380,7 +391,14 @@
           <div id="splitHoursGroup" class="form-group <%= safeFormValues && safeFormValues.isSplittable === 'true' ? '' : 'hidden' %>">
             <label>1回あたりの見積時間</label>
             <span class="duration-input standard-duration-input">
-              <input type="number" name="splitHours" id="splitHoursField" min="0.25" step="0.25" class="standard-input" placeholder="例：1" value="<%= safeFormValues && safeFormValues.splitHours ? safeFormValues.splitHours : '' %>" <%= safeFormValues && safeFormValues.isSplittable === 'true' ? 'required' : 'disabled' %>>
+              <input type="number" name="splitHours" id="splitHoursField" min="0.25" step="0.25" class="standard-input" placeholder="例：1" value="<%= safeFormValues && safeFormValues.splitHours !== undefined ? safeFormValues.splitHours : '1' %>" <%= safeFormValues && safeFormValues.isSplittable === 'true' ? 'required' : 'disabled' %>>
+              <span>時間</span>
+            </span>
+          </div>
+          <div id="dailyLimitHoursGroup" class="form-group <%= safeFormValues && safeFormValues.isSplittable === 'true' ? '' : 'hidden' %>">
+            <label>1日の実施時間上限</label>
+            <span class="duration-input standard-duration-input">
+              <input type="number" name="dailyLimitHours" id="dailyLimitHoursField" min="0.25" step="0.25" class="standard-input" placeholder="例：2" value="<%= safeFormValues && safeFormValues.dailyLimitHours !== undefined ? safeFormValues.dailyLimitHours : '2' %>" <%= safeFormValues && safeFormValues.isSplittable === 'true' ? 'required' : 'disabled' %>>
               <span>時間</span>
             </span>
           </div>

@@ -38,13 +38,32 @@ function getErrorMessage(errorType: string | undefined) {
     case "listEmptyTitle":
       return "タスク名を入力してください。";
     case "invalidAutoPlacement":
-      return "自動配置用設定を確認してください。時間は正の数で入力し、1回あたりの時間は見積時間以下にしてください。";
+      return "自動配置用設定を確認してください。各時間は正の数で入力してください。";
     case "listInvalidAutoPlacement":
-      return "自動配置用設定を保存できませんでした。1回あたりの時間は見積時間以下にしてください。";
+      return "自動配置用設定を保存できませんでした。各時間は正の数で入力してください。";
+    case "splitExceedsDailyLimit":
+    case "listSplitExceedsDailyLimit":
+      return "1回あたりの時間は、1日の実施時間上限以下にしてください。";
+    case "splitExceedsEstimate":
+    case "listSplitExceedsEstimate":
+      return "1回あたりの時間は、見積時間以下にしてください。";
     default:
       return null;
   }
 }
+function formatAutoPlacementConsistencyErrors(errorTypes: string[]) {
+  const messages = errorTypes
+    .map((errorType) => getErrorMessage(errorType))
+    .filter((message): message is string => Boolean(message));
+  if (messages.length <= 1) return messages[0] || null;
+  return messages.map((message) => `・${message}`).join("\n");
+}
+
+type AutoPlacementTimeField =
+  | "estimatedMinutes"
+  | "splitMinutes"
+  | "dailyLimitMinutes";
+
 
 // 画面識別子を3種類へ正規化し、不正値は今日画面へ戻す
 function normalizeView(value: unknown) {
@@ -77,6 +96,7 @@ function parseAutoPlacementSettings(body: Record<string, any>) {
       estimatedMinutes: null,
       isSplittable: false,
       splitMinutes: null,
+      dailyLimitMinutes: null,
       error: null,
     };
   }
@@ -97,22 +117,115 @@ function parseAutoPlacementSettings(body: Record<string, any>) {
       estimatedMinutes,
       isSplittable: false,
       splitMinutes: null,
+      dailyLimitMinutes: null,
       error: null,
     };
   }
 
   const splitHours = Number(String(body.splitHours ?? "").trim());
   const splitMinutes = Math.round(splitHours * 60);
+  const dailyLimitHours = Number(
+    String(body.dailyLimitHours ?? "").trim(),
+  );
+  const dailyLimitMinutes = Math.round(dailyLimitHours * 60);
   if (
     !Number.isFinite(splitHours) ||
     splitHours <= 0 ||
-    Math.abs(splitHours * 60 - splitMinutes) > 0.000001 ||
-    splitMinutes > estimatedMinutes
+    Math.abs(splitHours * 60 - splitMinutes) > 0.000001
   ) {
     return { error: "invalidSplitHours" };
   }
+  if (
+    !Number.isFinite(dailyLimitHours) ||
+    dailyLimitHours <= 0 ||
+    Math.abs(dailyLimitHours * 60 - dailyLimitMinutes) > 0.000001
+  ) {
+    return { error: "invalidDailyLimitHours" };
+  }
+  const consistencyErrors: string[] = [];
+  if (splitMinutes > estimatedMinutes) {
+    consistencyErrors.push("splitExceedsEstimate");
+  }
+  if (splitMinutes > dailyLimitMinutes) {
+    consistencyErrors.push("splitExceedsDailyLimit");
+  }
+  if (consistencyErrors.length > 0) {
+    return {
+      estimatedMinutes,
+      isSplittable: true,
+      splitMinutes,
+      dailyLimitMinutes,
+      error: consistencyErrors[0],
+      consistencyErrors,
+    };
+  }
 
-  return { estimatedMinutes, isSplittable: true, splitMinutes, error: null };
+  return {
+    estimatedMinutes,
+    isSplittable: true,
+    splitMinutes,
+    dailyLimitMinutes,
+    error: null,
+    consistencyErrors: [],
+  };
+}
+
+// 違反に関係する変更項目のうち、保存値へ戻すことで違反が解消する項目を求める。
+function getConsistencyRollbackFields(currentTodo: any, settings: any) {
+  const saved: Record<AutoPlacementTimeField, number | null> = {
+    estimatedMinutes: currentTodo.estimatedMinutes,
+    splitMinutes: currentTodo.splitMinutes,
+    dailyLimitMinutes: currentTodo.dailyLimitMinutes,
+  };
+  const submitted: Record<AutoPlacementTimeField, number | null> = {
+    estimatedMinutes: settings.estimatedMinutes,
+    splitMinutes: settings.splitMinutes,
+    dailyLimitMinutes: settings.dailyLimitMinutes,
+  };
+  const changed = (field: AutoPlacementTimeField) =>
+    submitted[field] !== saved[field];
+  const resolves = (
+    leftValue: number | null,
+    rightValue: number | null,
+  ) =>
+    leftValue === null ||
+    rightValue === null ||
+    leftValue <= rightValue;
+  const rollbackFields = new Set<AutoPlacementTimeField>();
+
+  const collectConstraintCauses = (
+    leftField: AutoPlacementTimeField,
+    rightField: AutoPlacementTimeField,
+  ) => {
+    const leftChanged = changed(leftField);
+    const rightChanged = changed(rightField);
+    const revertingLeftResolves =
+      leftChanged && resolves(saved[leftField], submitted[rightField]);
+    const revertingRightResolves =
+      rightChanged && resolves(submitted[leftField], saved[rightField]);
+
+    if (revertingLeftResolves) rollbackFields.add(leftField);
+    if (revertingRightResolves) rollbackFields.add(rightField);
+    if (
+      !revertingLeftResolves &&
+      !revertingRightResolves &&
+      leftChanged &&
+      rightChanged
+    ) {
+      rollbackFields.add(leftField);
+      rollbackFields.add(rightField);
+    }
+  };
+
+  for (const errorType of settings.consistencyErrors || []) {
+    if (errorType === "splitExceedsEstimate") {
+      collectConstraintCauses("splitMinutes", "estimatedMinutes");
+    }
+    if (errorType === "splitExceedsDailyLimit") {
+      collectConstraintCauses("splitMinutes", "dailyLimitMinutes");
+    }
+  }
+  return rollbackFields;
 }
 
 function buildEmptyFormValues() {
@@ -126,7 +239,8 @@ function buildEmptyFormValues() {
     currentMode: "detail",
     estimatedHours: "",
     isSplittable: "false",
-    splitHours: "",
+    splitHours: "1",
+    dailyLimitHours: "2",
   };
 }
 
@@ -143,7 +257,17 @@ function buildFormValues(body: Record<string, any> = {}, currentTodo?: any) {
   const isSplittableValue =
     body.isSplittable ?? String(currentTodo?.isSplittable ?? false);
   const splitHoursValue =
-    body.splitHours ?? getHoursInputValue(currentTodo?.splitMinutes);
+    body.splitHours ??
+    (currentTodo
+      ? getHoursInputValue(currentTodo.splitMinutes) ||
+        (currentTodo.isSplittable ? "1" : "")
+      : "1");
+  const dailyLimitHoursValue =
+    body.dailyLimitHours ??
+    (currentTodo
+      ? getHoursInputValue(currentTodo.dailyLimitMinutes) ||
+        (currentTodo.isSplittable ? "2" : "")
+      : "2");
 
   const values: Record<string, any> = {
     title: titleValue,
@@ -156,6 +280,7 @@ function buildFormValues(body: Record<string, any> = {}, currentTodo?: any) {
     estimatedHours: estimatedHoursValue,
     isSplittable: isSplittableValue,
     splitHours: splitHoursValue,
+    dailyLimitHours: dailyLimitHoursValue,
   };
 
   if (currentTodo) {
@@ -171,6 +296,8 @@ function buildFormValues(body: Record<string, any> = {}, currentTodo?: any) {
       isSplittableValue;
     values["todo-" + currentTodo.id + "-splitHours"] =
       splitHoursValue;
+    values["todo-" + currentTodo.id + "-dailyLimitHours"] =
+      dailyLimitHoursValue;
   }
 
   return values;
@@ -182,6 +309,7 @@ async function renderIndexPage(
     todos: any[];
     errorType?: string;
     formValues?: Record<string, any>;
+    errorMessage?: string | null;
     duplicateTodoId?: number | null;
     activeView?: string;
     autoPlacementEditTodoId?: number | null;
@@ -248,7 +376,7 @@ async function renderIndexPage(
     todos: sortedTodos,
     categories: allDisplayCategories,
     error: options.errorType,
-    errorMessage: getErrorMessage(options.errorType),
+    errorMessage: options.errorMessage ?? getErrorMessage(options.errorType),
     formValues: options.formValues || {},
     duplicateTodoId: options.duplicateTodoId ?? null,
     initialView: activeView,
@@ -292,6 +420,7 @@ app.post("/todos", async (req, res) => {
       estimatedHours,
       isSplittable,
       splitHours,
+      dailyLimitHours,
     } = req.body;
 
     const requestedView = normalizeView(view);
@@ -318,12 +447,23 @@ app.post("/todos", async (req, res) => {
       estimatedHours,
       isSplittable,
       splitHours,
+      dailyLimitHours,
     });
     if (autoPlacementSettings.error) {
       const todos = await prisma.todo.findMany({ include: { category: true } });
+      const consistencyErrors: string[] =
+        (autoPlacementSettings as any).consistencyErrors || [];
+      const errorTypeMap: Record<string, string> = {
+        splitExceedsDailyLimit: "splitExceedsDailyLimit",
+        splitExceedsEstimate: "splitExceedsEstimate",
+      };
+      const errorType =
+        errorTypeMap[autoPlacementSettings.error] || "invalidAutoPlacement";
       return renderIndexPage(res, {
         todos,
-        errorType: "invalidAutoPlacement",
+        errorType,
+        errorMessage:
+          formatAutoPlacementConsistencyErrors(consistencyErrors),
         formValues: buildFormValues(req.body),
         activeView: requestedView,
       });
@@ -385,6 +525,7 @@ app.post("/todos", async (req, res) => {
         estimatedMinutes: autoPlacementSettings.estimatedMinutes,
         isSplittable: autoPlacementSettings.isSplittable,
         splitMinutes: autoPlacementSettings.splitMinutes,
+        dailyLimitMinutes: autoPlacementSettings.dailyLimitMinutes,
       },
     });
 
@@ -477,10 +618,40 @@ app.post("/todos/:id/auto-placement", async (req, res) => {
     const autoPlacementSettings = parseAutoPlacementSettings(req.body);
     if (autoPlacementSettings.error) {
       const todos = await prisma.todo.findMany({ include: { category: true } });
+      const consistencyErrors: string[] =
+        (autoPlacementSettings as any).consistencyErrors || [];
+      const formValues = buildFormValues(req.body, currentTodo);
+      const rollbackFields = getConsistencyRollbackFields(
+        currentTodo,
+        autoPlacementSettings,
+      );
+      const savedInputValues: Record<AutoPlacementTimeField, string> = {
+        estimatedMinutes: getHoursInputValue(currentTodo.estimatedMinutes),
+        splitMinutes: getHoursInputValue(currentTodo.splitMinutes),
+        dailyLimitMinutes: getHoursInputValue(currentTodo.dailyLimitMinutes),
+      };
+      const formValueKeys: Record<AutoPlacementTimeField, string> = {
+        estimatedMinutes: "estimatedHours",
+        splitMinutes: "splitHours",
+        dailyLimitMinutes: "dailyLimitHours",
+      };
+      for (const field of rollbackFields) {
+        formValues[`todo-${todoId}-${formValueKeys[field]}`] =
+          savedInputValues[field];
+      }
+
+      const primaryError = consistencyErrors[0];
+      const listErrorTypeMap: Record<string, string> = {
+        splitExceedsDailyLimit: "listSplitExceedsDailyLimit",
+        splitExceedsEstimate: "listSplitExceedsEstimate",
+      };
       return renderIndexPage(res, {
         todos,
-        errorType: "listInvalidAutoPlacement",
-        formValues: buildFormValues(req.body, currentTodo),
+        errorType:
+          listErrorTypeMap[primaryError] || "listInvalidAutoPlacement",
+        errorMessage:
+          formatAutoPlacementConsistencyErrors(consistencyErrors),
+        formValues,
         activeView: "list",
         autoPlacementEditTodoId: todoId,
       });
@@ -492,6 +663,7 @@ app.post("/todos/:id/auto-placement", async (req, res) => {
         estimatedMinutes: autoPlacementSettings.estimatedMinutes,
         isSplittable: autoPlacementSettings.isSplittable,
         splitMinutes: autoPlacementSettings.splitMinutes,
+        dailyLimitMinutes: autoPlacementSettings.dailyLimitMinutes,
       },
     });
 
